@@ -1,0 +1,8 @@
+[package]
+name = "kast"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vk_bindings = { path = "../vk_bindings" }
+winit = "0.30.12"
