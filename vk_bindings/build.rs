@@ -13,6 +13,7 @@ fn main() {
         .use_core()
         .derive_default(true)
         .prepend_enum_name(false)
+        .blocklist_item("None")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
 
     // Add include paths found by pkg-config
