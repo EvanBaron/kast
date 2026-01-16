@@ -10,6 +10,8 @@ pub struct FrameData {
     pub image_available_semaphore: VkSemaphore,
     pub render_finished_semaphore: VkSemaphore,
     pub in_flight_fence: VkFence,
+    pub delete_queue_framebuffers: Vec<VkFramebuffer>,
+    pub delete_queue_image_views: Vec<VkImageView>,
 }
 
 impl FrameData {
@@ -105,12 +107,17 @@ impl FrameData {
             }
         }
 
+        let delete_queue_framebuffers = Vec::new();
+        let delete_queue_image_views = Vec::new();
+
         Self {
             command_pool,
             command_buffer,
             image_available_semaphore,
             render_finished_semaphore,
             in_flight_fence,
+            delete_queue_framebuffers,
+            delete_queue_image_views,
         }
     }
 

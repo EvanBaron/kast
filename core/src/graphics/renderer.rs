@@ -30,6 +30,8 @@ impl Renderer {
             instance.graphics_queue_family,
             instance.present_queue_family,
             window,
+            core::ptr::null_mut(),
+            None,
         );
 
         let render_pass = Self::create_renderpass(instance.device, swapchain.surface_format.format);
@@ -163,14 +165,19 @@ impl Renderer {
             );
         }
 
-        // Reset the fence to unsignaled state for the next frame.
-        let result = unsafe { vkResetFences(self.device, 1, &in_flight_fence) };
+        let frame = &mut self.frames[self.current_frame_index];
+        unsafe {
+            for &frame_buffer in &frame.delete_queue_framebuffers {
+                vkDestroyFramebuffer(self.device, frame_buffer, core::ptr::null());
+            }
 
-        if result != VK_SUCCESS {
-            panic!(
-                "Error while resetting in-flight fence. Error: {:?}.",
-                result
-            );
+            frame.delete_queue_framebuffers.clear();
+
+            for &image_view in &frame.delete_queue_image_views {
+                vkDestroyImageView(self.device, image_view, core::ptr::null());
+            }
+
+            frame.delete_queue_image_views.clear();
         }
 
         // Acquire the next image from the swapchain.
@@ -186,8 +193,20 @@ impl Renderer {
             )
         };
 
-        if !(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
+        if result == VK_ERROR_OUT_OF_DATE_KHR {
+            return;
+        } else if result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR {
             panic!("Error while acquiring image: {:?}", result);
+        }
+
+        // Reset the fence to unsignaled state for the next frame.
+        let result = unsafe { vkResetFences(self.device, 1, &in_flight_fence) };
+
+        if result != VK_SUCCESS {
+            panic!(
+                "Error while resetting in-flight fence. Error: {:?}.",
+                result
+            );
         }
 
         // Reset the command pool to clear old commands.
@@ -313,13 +332,40 @@ impl Renderer {
                 pResults: core::ptr::null_mut(),
             };
 
-            // 7. Present the image to the screen.
+            // Present the image to the screen.
             let result = unsafe { vkQueuePresentKHR(self.present_queue, &present_info) };
 
-            if !(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
+            if result == VK_ERROR_OUT_OF_DATE_KHR {
+                return;
+            } else if result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR {
                 panic!("Error while submitting present: {:?}.", result);
             }
         }
+    }
+
+    pub fn resize(&mut self, instance: &Instance, window: &Window) {
+        let frame = &mut self.frames[self.current_frame_index];
+        frame
+            .delete_queue_framebuffers
+            .extend_from_slice(&self.swapchain.framebuffers);
+        frame
+            .delete_queue_image_views
+            .extend_from_slice(&self.swapchain.image_views);
+
+        let old_handle = self.swapchain.handle;
+        self.swapchain = Swapchain::new(
+            instance.physical_device,
+            self.device,
+            instance.surface,
+            instance.graphics_queue_family,
+            instance.present_queue_family,
+            window,
+            old_handle,
+            Some(self.swapchain.surface_format),
+        );
+
+        self.swapchain
+            .create_framebuffers(self.device, self.render_pass);
     }
 }
 
@@ -333,9 +379,11 @@ impl Drop for Renderer {
                     result
                 );
             }
+
             for frame in self.frames.iter_mut() {
                 frame.destroy(self.device);
             }
+
             vkDestroyRenderPass(self.device, self.render_pass, core::ptr::null());
             self.swapchain.destroy();
         }

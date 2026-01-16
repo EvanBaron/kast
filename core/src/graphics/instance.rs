@@ -550,8 +550,10 @@ impl Instance {
             queue_create_info_count = 2;
         }
 
-        let device_extensions =
-            [VK_KHR_SWAPCHAIN_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char];
+        let device_extensions = [
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
+            VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
+        ];
         let physical_device_features = VkPhysicalDeviceFeatures::default();
 
         let device_create_info = VkDeviceCreateInfo {

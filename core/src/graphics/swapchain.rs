@@ -27,50 +27,13 @@ impl Swapchain {
         graphics_queue_family: QueueFamily,
         present_queue_family: QueueFamily,
         window: &Window,
+        old_swapchain: VkSwapchainKHR,
+        surface_format: Option<VkSurfaceFormatKHR>,
     ) -> Self {
-        let mut surface_format_count: u32 = 0;
-        unsafe {
-            vkGetPhysicalDeviceSurfaceFormatsKHR(
-                physical_device,
-                surface,
-                &mut surface_format_count,
-                core::ptr::null_mut(),
-            )
+        let surface_format = match surface_format {
+            Some(surface_format) => surface_format,
+            None => Self::choose_surface_format(physical_device, surface),
         };
-
-        let mut surface_formats =
-            vec![VkSurfaceFormatKHR::default(); surface_format_count as usize];
-        unsafe {
-            vkGetPhysicalDeviceSurfaceFormatsKHR(
-                physical_device,
-                surface,
-                &mut surface_format_count,
-                surface_formats.as_mut_ptr(),
-            )
-        };
-
-        // Select the surface format:
-        // We look for a format that supports the B8G8R8A8_UNORM format and SRGB color space.
-        // SRGB is preferred for correct color rendering (gamma correction).
-        let surface_format = surface_formats
-            .iter()
-            .find(|format| {
-                let mut format_properties = VkFormatProperties::default();
-                unsafe {
-                    vkGetPhysicalDeviceFormatProperties(
-                        physical_device,
-                        format.format,
-                        &mut format_properties,
-                    )
-                };
-
-                (format_properties.optimalTilingFeatures
-                    & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT as VkFormatFeatureFlags)
-                    != 0
-                    && format.format == VK_FORMAT_B8G8R8A8_UNORM
-                    && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-            })
-            .expect("Could not find suitable surface format.");
 
         let mut present_mode_count: u32 = 0;
         unsafe {
@@ -170,7 +133,7 @@ impl Swapchain {
             compositeAlpha: VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
             presentMode: present_mode,
             clipped: VK_TRUE,
-            oldSwapchain: core::ptr::null_mut(),
+            oldSwapchain: old_swapchain,
         };
 
         println!("Creating swapchain.");
@@ -186,6 +149,13 @@ impl Swapchain {
 
         if result != VK_SUCCESS {
             panic!("Failed to create swapchain!");
+        }
+
+        if old_swapchain != core::ptr::null_mut() {
+            println!("Deleting old swapchain.");
+            unsafe {
+                vkDestroySwapchainKHR(device, old_swapchain, core::ptr::null_mut());
+            }
         }
 
         let mut image_count: u32 = 0;
@@ -256,7 +226,7 @@ impl Swapchain {
             device,
             image_count,
             image_views,
-            surface_format: *surface_format,
+            surface_format,
             extent,
             framebuffers: Vec::new(),
         }
@@ -269,8 +239,8 @@ impl Swapchain {
     /// * `render_pass` - The Vulkan render pass.
     pub fn create_framebuffers(&mut self, device: VkDevice, render_pass: VkRenderPass) {
         let mut framebuffers = Vec::with_capacity(self.image_count as usize);
-        for (i, swapchain_img_view) in self.image_views.iter().enumerate() {
-            let attachments: [VkImageView; 1] = [*swapchain_img_view];
+        for (i, swapchain_image_view) in self.image_views.iter().enumerate() {
+            let attachments: [VkImageView; 1] = [*swapchain_image_view];
 
             let create_info = VkFramebufferCreateInfo {
                 sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -305,15 +275,69 @@ impl Swapchain {
         self.framebuffers = framebuffers;
     }
 
+    fn choose_surface_format(
+        physical_device: VkPhysicalDevice,
+        surface: VkSurfaceKHR,
+    ) -> VkSurfaceFormatKHR {
+        let mut surface_format_count: u32 = 0;
+        unsafe {
+            vkGetPhysicalDeviceSurfaceFormatsKHR(
+                physical_device,
+                surface,
+                &mut surface_format_count,
+                core::ptr::null_mut(),
+            )
+        };
+
+        let mut surface_formats =
+            vec![VkSurfaceFormatKHR::default(); surface_format_count as usize];
+        unsafe {
+            vkGetPhysicalDeviceSurfaceFormatsKHR(
+                physical_device,
+                surface,
+                &mut surface_format_count,
+                surface_formats.as_mut_ptr(),
+            )
+        };
+
+        // Select the surface format:
+        // We look for a format that supports the B8G8R8A8_UNORM format and SRGB color space.
+        // SRGB is preferred for correct color rendering (gamma correction).
+        *surface_formats
+            .iter()
+            .find(|format| {
+                let mut format_properties = VkFormatProperties::default();
+                unsafe {
+                    vkGetPhysicalDeviceFormatProperties(
+                        physical_device,
+                        format.format,
+                        &mut format_properties,
+                    )
+                };
+
+                (format_properties.optimalTilingFeatures
+                    & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT as VkFormatFeatureFlags)
+                    != 0
+                    && format.format == VK_FORMAT_B8G8R8A8_UNORM
+                    && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            })
+            .expect("Could not find suitable surface format.")
+    }
+
     pub fn destroy(&mut self) {
         unsafe {
             for &framebuffer in self.framebuffers.iter() {
-                vkDestroyFramebuffer(self.device, framebuffer, core::ptr::null());
+                vkDestroyFramebuffer(self.device, framebuffer, core::ptr::null_mut());
             }
+            self.framebuffers.clear();
+
             for &image_view in self.image_views.iter() {
-                vkDestroyImageView(self.device, image_view, core::ptr::null());
+                vkDestroyImageView(self.device, image_view, core::ptr::null_mut());
             }
-            vkDestroySwapchainKHR(self.device, self.handle, core::ptr::null());
+            self.image_views.clear();
+        }
+        unsafe {
+            vkDestroySwapchainKHR(self.device, self.handle, core::ptr::null_mut());
         }
     }
 }

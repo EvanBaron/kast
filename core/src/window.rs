@@ -90,6 +90,21 @@ impl ApplicationHandler for ApplicationWindow {
                 event_loop.exit();
             }
 
+            WindowEvent::Resized(size) => {
+                if size.width == 0 || size.height == 0 {
+                    // Window is minimized, skip resizing.
+                    return;
+                }
+
+                if let (Some(renderer), Some(instance), Some(window)) = (
+                    self.renderer.as_mut(),
+                    self.instance.as_ref(),
+                    self.window.as_ref(),
+                ) {
+                    renderer.resize(instance, window);
+                }
+            }
+
             WindowEvent::RedrawRequested => {
                 self.window.as_ref().unwrap().request_redraw();
                 self.renderer.as_mut().unwrap().draw_frame();
