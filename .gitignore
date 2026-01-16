@@ -1,3 +1,9 @@
 Vulkan-Headers
 target
 build_tools/*
+
+dev_resources/*
+
+# Direnv
+.envrc
+.direnv/
