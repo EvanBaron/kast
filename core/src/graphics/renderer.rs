@@ -156,24 +156,14 @@ impl Renderer {
         // Wait for the previous frame to finish processing.
         let in_flight_fence = self.frames[self.current_frame_index].in_flight_fence;
         let present_fence = self.frames[self.current_frame_index].present_fence;
-        let result =
-            unsafe { vkWaitForFences(self.device, 1, &in_flight_fence, VK_TRUE, core::u64::MAX) };
 
-        if result != VK_SUCCESS {
-            panic!(
-                "Error while waiting for in-flight fence. Error: {:?}.",
-                result
-            );
-        }
+        let fences = [in_flight_fence, present_fence];
 
         let result =
-            unsafe { vkWaitForFences(self.device, 1, &present_fence, VK_TRUE, core::u64::MAX) };
+            unsafe { vkWaitForFences(self.device, 2, fences.as_ptr(), VK_TRUE, core::u64::MAX) };
 
         if result != VK_SUCCESS {
-            panic!(
-                "Error while waiting for present fence. Error: {:?}.",
-                result
-            );
+            panic!("Error while waiting for fences. Error: {:?}.", result);
         }
 
         let frame = &mut self.frames[self.current_frame_index];
