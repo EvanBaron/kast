@@ -45,24 +45,22 @@ impl Swapchain {
             )
         };
 
-        let present_modes = vec![VkPresentModeKHR::default(); present_mode_count as usize];
+        let mut present_modes = vec![VkPresentModeKHR::default(); present_mode_count as usize];
         unsafe {
             vkGetPhysicalDeviceSurfacePresentModesKHR(
                 physical_device,
                 surface,
                 &mut present_mode_count,
-                core::ptr::null_mut(),
+                present_modes.as_mut_ptr(),
             )
         };
 
-        // Select the present mode:
-        // VK_PRESENT_MODE_FIFO_KHR corresponds to VSync and is guaranteed to be available.
-        let preferred_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-        let present_mode = present_modes
-            .iter()
-            .find(|&mode| mode == &preferred_present_mode)
-            .copied()
-            .unwrap_or(preferred_present_mode);
+        // Select the present mode VK_PRESENT_MODE_MAILBOX_KHR first, then VK_PRESENT_MODE_FIFO_KHR as a fallback.
+        let present_mode = if present_modes.contains(&VK_PRESENT_MODE_MAILBOX_KHR) {
+            VK_PRESENT_MODE_MAILBOX_KHR
+        } else {
+            VK_PRESENT_MODE_FIFO_KHR
+        };
 
         let empty_array = [];
         let queue_family_array = [
