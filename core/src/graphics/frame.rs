@@ -10,6 +10,7 @@ pub struct FrameData {
     pub image_available_semaphore: VkSemaphore,
     pub render_finished_semaphore: VkSemaphore,
     pub in_flight_fence: VkFence,
+    pub present_fence: VkFence,
     pub delete_queue_framebuffers: Vec<VkFramebuffer>,
     pub delete_queue_image_views: Vec<VkImageView>,
 }
@@ -107,6 +108,19 @@ impl FrameData {
             }
         }
 
+        let mut present_fence = core::ptr::null_mut();
+        unsafe {
+            let result = vkCreateFence(
+                device,
+                &fence_create_info,
+                core::ptr::null(),
+                &mut present_fence,
+            );
+            if result != VK_SUCCESS {
+                panic!("Failed to create present fence. Error: {:?}.", result);
+            }
+        }
+
         let delete_queue_framebuffers = Vec::new();
         let delete_queue_image_views = Vec::new();
 
@@ -116,6 +130,7 @@ impl FrameData {
             image_available_semaphore,
             render_finished_semaphore,
             in_flight_fence,
+            present_fence,
             delete_queue_framebuffers,
             delete_queue_image_views,
         }
@@ -126,6 +141,7 @@ impl FrameData {
             vkDestroySemaphore(device, self.image_available_semaphore, core::ptr::null());
             vkDestroySemaphore(device, self.render_finished_semaphore, core::ptr::null());
             vkDestroyFence(device, self.in_flight_fence, core::ptr::null());
+            vkDestroyFence(device, self.present_fence, core::ptr::null());
             vkDestroyCommandPool(device, self.command_pool, core::ptr::null());
         }
     }

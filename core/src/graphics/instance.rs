@@ -139,7 +139,17 @@ impl Instance {
     /// # Arguments
     /// * `event_loop` - Reference to the active event loop.
     fn init_instance(event_loop: &ActiveEventLoop) -> VkInstance {
-        let instance_extensions = window::get_required_instance_extensions(event_loop);
+        let mut instance_extensions = window::get_required_instance_extensions(event_loop);
+        instance_extensions.push(
+            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME.as_ptr()
+                as *const core::ffi::c_char,
+        );
+        instance_extensions.push(
+            VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
+        );
+        instance_extensions.push(
+            VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
+        );
 
         #[cfg(debug_assertions)]
         let layers = Self::create_validation_layer();
@@ -153,7 +163,7 @@ impl Instance {
             applicationVersion: make_version(0, 0, 1, 0),
             pEngineName: APPLICATION_NAME.as_ptr(),
             engineVersion: make_version(0, 0, 1, 0),
-            apiVersion: make_version(0, 1, 0, 0),
+            apiVersion: make_version(0, 1, 1, 0),
         };
 
         let create_info = VkInstanceCreateInfo {
@@ -556,9 +566,16 @@ impl Instance {
         ];
         let physical_device_features = VkPhysicalDeviceFeatures::default();
 
+        let mut swapchain_maintenance1_features =
+            VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT {
+                sType: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT,
+                pNext: core::ptr::null_mut(),
+                swapchainMaintenance1: VK_TRUE,
+            };
+
         let device_create_info = VkDeviceCreateInfo {
             sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            pNext: core::ptr::null(),
+            pNext: &mut swapchain_maintenance1_features as *mut _ as *mut core::ffi::c_void,
             flags: 0x0,
             queueCreateInfoCount: queue_create_info_count,
             pQueueCreateInfos: queue_create_infos.as_ptr(),

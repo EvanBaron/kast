@@ -106,8 +106,14 @@ impl ApplicationHandler for ApplicationWindow {
             }
 
             WindowEvent::RedrawRequested => {
-                self.window.as_ref().unwrap().request_redraw();
-                self.renderer.as_mut().unwrap().draw_frame();
+                if let (Some(renderer), Some(instance), Some(window)) = (
+                    self.renderer.as_mut(),
+                    self.instance.as_ref(),
+                    self.window.as_ref(),
+                ) {
+                    window.request_redraw();
+                    renderer.draw_frame(instance, window);
+                }
             }
 
             _ => (),

@@ -4,7 +4,7 @@ use crate::graphics::swapchain::Swapchain;
 use vk_bindings::*;
 use winit::window::Window;
 
-const MAX_FRAMES_IN_FLIGHT: usize = 2;
+const MAX_FRAMES_IN_FLIGHT: usize = 3;
 
 pub struct Renderer {
     pub swapchain: Swapchain,
@@ -150,17 +150,28 @@ impl Renderer {
         render_pass
     }
 
-    pub fn draw_frame(&mut self) {
+    pub fn draw_frame(&mut self, instance: &Instance, window: &Window) {
         self.current_frame_index = (self.current_frame_index + 1) % self.frames.len();
 
         // Wait for the previous frame to finish processing.
         let in_flight_fence = self.frames[self.current_frame_index].in_flight_fence;
+        let present_fence = self.frames[self.current_frame_index].present_fence;
         let result =
             unsafe { vkWaitForFences(self.device, 1, &in_flight_fence, VK_TRUE, core::u64::MAX) };
 
         if result != VK_SUCCESS {
             panic!(
                 "Error while waiting for in-flight fence. Error: {:?}.",
+                result
+            );
+        }
+
+        let result =
+            unsafe { vkWaitForFences(self.device, 1, &present_fence, VK_TRUE, core::u64::MAX) };
+
+        if result != VK_SUCCESS {
+            panic!(
+                "Error while waiting for present fence. Error: {:?}.",
                 result
             );
         }
@@ -194,6 +205,7 @@ impl Renderer {
         };
 
         if result == VK_ERROR_OUT_OF_DATE_KHR {
+            self.resize(instance, window);
             return;
         } else if result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR {
             panic!("Error while acquiring image: {:?}", result);
@@ -207,6 +219,12 @@ impl Renderer {
                 "Error while resetting in-flight fence. Error: {:?}.",
                 result
             );
+        }
+
+        let result = unsafe { vkResetFences(self.device, 1, &present_fence) };
+
+        if result != VK_SUCCESS {
+            panic!("Error while resetting present fence. Error: {:?}.", result);
         }
 
         // Reset the command pool to clear old commands.
@@ -321,9 +339,17 @@ impl Renderer {
             let render_finished_semaphores =
                 [self.frames[self.current_frame_index].render_finished_semaphore];
 
+            let mut fences = [self.frames[self.current_frame_index].present_fence];
+            let mut present_fence_info = VkSwapchainPresentFenceInfoEXT {
+                sType: VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT,
+                pNext: core::ptr::null(),
+                swapchainCount: swapchains.len() as u32,
+                pFences: fences.as_mut_ptr(),
+            };
+
             let present_info = VkPresentInfoKHR {
                 sType: VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                pNext: core::ptr::null(),
+                pNext: &mut present_fence_info as *mut _ as *mut core::ffi::c_void,
                 waitSemaphoreCount: render_finished_semaphores.len() as u32,
                 pWaitSemaphores: render_finished_semaphores.as_ptr(),
                 swapchainCount: swapchains.len() as u32,
@@ -335,9 +361,9 @@ impl Renderer {
             // Present the image to the screen.
             let result = unsafe { vkQueuePresentKHR(self.present_queue, &present_info) };
 
-            if result == VK_ERROR_OUT_OF_DATE_KHR {
-                return;
-            } else if result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR {
+            if result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR {
+                self.resize(instance, window);
+            } else if result != VK_SUCCESS {
                 panic!("Error while submitting present: {:?}.", result);
             }
         }

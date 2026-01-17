@@ -92,7 +92,12 @@ impl Swapchain {
             );
         }
 
-        let image_count = surface_capabilities.minImageCount;
+        let mut image_count = surface_capabilities.minImageCount + 1;
+        if surface_capabilities.maxImageCount > 0
+            && image_count > surface_capabilities.maxImageCount
+        {
+            image_count = surface_capabilities.maxImageCount;
+        }
 
         // Determine the swap extent (resolution of the swap chain images).
         // If the surface size is undefined (u32::MAX), we clamp the window size to the
@@ -303,25 +308,30 @@ impl Swapchain {
         // Select the surface format:
         // We look for a format that supports the B8G8R8A8_UNORM format and SRGB color space.
         // SRGB is preferred for correct color rendering (gamma correction).
-        *surface_formats
-            .iter()
-            .find(|format| {
-                let mut format_properties = VkFormatProperties::default();
-                unsafe {
-                    vkGetPhysicalDeviceFormatProperties(
-                        physical_device,
-                        format.format,
-                        &mut format_properties,
-                    )
-                };
+        let format = surface_formats.iter().find(|format| {
+            let mut format_properties = VkFormatProperties::default();
+            unsafe {
+                vkGetPhysicalDeviceFormatProperties(
+                    physical_device,
+                    format.format,
+                    &mut format_properties,
+                )
+            };
 
-                (format_properties.optimalTilingFeatures
-                    & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT as VkFormatFeatureFlags)
-                    != 0
-                    && format.format == VK_FORMAT_B8G8R8A8_UNORM
-                    && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-            })
-            .expect("Could not find suitable surface format.")
+            (format_properties.optimalTilingFeatures
+                & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT as VkFormatFeatureFlags)
+                != 0
+                && format.format == VK_FORMAT_B8G8R8A8_UNORM
+                && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+        });
+
+        match format {
+            Some(format) => *format,
+            None => {
+                println!("Preferred surface format not found. Falling back to first available.");
+                surface_formats[0]
+            }
+        }
     }
 
     pub fn destroy(&mut self) {
