@@ -144,12 +144,11 @@ impl Instance {
             VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME.as_ptr()
                 as *const core::ffi::c_char,
         );
-        instance_extensions.push(
-            VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
-        );
-        instance_extensions.push(
-            VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
-        );
+        instance_extensions
+            .push(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char);
+        instance_extensions
+            .push(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.as_ptr()
+                as *const core::ffi::c_char);
 
         #[cfg(debug_assertions)]
         let layers = Self::create_validation_layer();
@@ -213,7 +212,7 @@ impl Instance {
                 let create_info = VkXlibSurfaceCreateInfoKHR {
                     sType: VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
                     pNext: core::ptr::null(),
-                    flags: 0,
+                    flags: 0x0,
                     dpy: display
                         .display
                         .map(|ptr| ptr.as_ptr())
@@ -235,7 +234,7 @@ impl Instance {
                 let create_info = VkXcbSurfaceCreateInfoKHR {
                     sType: VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
                     pNext: core::ptr::null(),
-                    flags: 0,
+                    flags: 0x0,
                     connection: display
                         .connection
                         .map(|ptr| ptr.as_ptr())
@@ -257,7 +256,7 @@ impl Instance {
                 let create_info = VkWaylandSurfaceCreateInfoKHR {
                     sType: VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
                     pNext: core::ptr::null(),
-                    flags: 0,
+                    flags: 0x0,
                     display: display.display.as_ptr() as *mut _,
                     surface: window.surface.as_ptr() as *mut _,
                 };
@@ -275,7 +274,7 @@ impl Instance {
                 let create_info = VkWin32SurfaceCreateInfoKHR {
                     sType: VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
                     pNext: core::ptr::null(),
-                    flags: 0,
+                    flags: 0x0,
                     hinstance: window
                         .hinstance
                         .map(|h| h.get() as *mut core::ffi::c_void)

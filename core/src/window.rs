@@ -89,13 +89,13 @@ impl ApplicationHandler for ApplicationWindow {
     /// * `event` - The received window event.
     fn window_event(
         &mut self,
-        _event_loop: &ActiveEventLoop,
+        event_loop: &ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                _event_loop.exit();
+                event_loop.exit();
             }
 
             WindowEvent::Resized(size) => {

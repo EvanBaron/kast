@@ -1,5 +1,6 @@
 use crate::graphics::frame::FrameData;
 use crate::graphics::instance::Instance;
+use crate::graphics::pipeline::Pipeline;
 use crate::graphics::swapchain::Swapchain;
 use vk_bindings::*;
 use winit::window::Window;
@@ -9,6 +10,7 @@ const MAX_FRAMES_IN_FLIGHT: usize = 3;
 pub struct Renderer {
     pub swapchain: Swapchain,
     pub render_pass: VkRenderPass,
+    pub pipeline: Pipeline,
     pub frames: Vec<FrameData>,
     pub current_frame_index: usize,
     device: VkDevice,
@@ -36,6 +38,8 @@ impl Renderer {
 
         let render_pass = Self::create_renderpass(instance.device, swapchain.surface_format.format);
 
+        let pipeline = Pipeline::new(instance.device, render_pass);
+
         swapchain.create_framebuffers(instance.device, render_pass);
 
         let mut frames = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
@@ -49,6 +53,7 @@ impl Renderer {
         Self {
             swapchain,
             render_pass,
+            pipeline,
             frames,
             device: instance.device,
             current_frame_index: 0,
@@ -254,7 +259,7 @@ impl Renderer {
 
         let clear_value = [VkClearValue {
             color: VkClearColorValue {
-                float32: [0.0, 0.0, 0., 1.0],
+                float32: [0.1, 0.2, 0.3, 1.0],
             },
         }];
 
@@ -276,6 +281,51 @@ impl Renderer {
                 self.frames[self.current_frame_index].command_buffer,
                 &render_pass_begin_info,
                 VK_SUBPASS_CONTENTS_INLINE,
+            );
+
+            vkCmdBindPipeline(
+                self.frames[self.current_frame_index].command_buffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                self.pipeline.handle,
+            );
+
+            let viewports = [VkViewport {
+                x: 0.0,
+                y: 0.0,
+                width: self.swapchain.extent.width as f32,
+                height: self.swapchain.extent.height as f32,
+                minDepth: 0.0,
+                maxDepth: 1.0,
+            }];
+
+            vkCmdSetViewport(
+                self.frames[self.current_frame_index].command_buffer,
+                0,
+                viewports.len() as u32,
+                viewports.as_ptr(),
+            );
+
+            let scissors = [VkRect2D {
+                offset: VkOffset2D { x: 0, y: 0 },
+                extent: VkExtent2D {
+                    width: self.swapchain.extent.width,
+                    height: self.swapchain.extent.height,
+                },
+            }];
+
+            vkCmdSetScissor(
+                self.frames[self.current_frame_index].command_buffer,
+                0,
+                scissors.len() as u32,
+                scissors.as_ptr(),
+            );
+
+            vkCmdDraw(
+                self.frames[self.current_frame_index].command_buffer,
+                3,
+                1,
+                0,
+                0,
             );
 
             vkCmdEndRenderPass(self.frames[self.current_frame_index].command_buffer);
@@ -400,6 +450,7 @@ impl Drop for Renderer {
                 frame.destroy(self.device);
             }
 
+            self.pipeline.destroy();
             vkDestroyRenderPass(self.device, self.render_pass, core::ptr::null());
             self.swapchain.destroy();
         }
