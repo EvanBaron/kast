@@ -58,6 +58,8 @@ impl ApplicationHandler for ApplicationWindow {
     /// * `event_loop` - The active event loop.
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+
             let window = event_loop
                 .create_window(WindowAttributes::default().with_title(WINDOW_TITLE.to_string()))
                 .unwrap();
@@ -73,6 +75,12 @@ impl ApplicationHandler for ApplicationWindow {
         }
     }
 
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
+    }
+
     /// Handles window events.
     ///
     /// # Arguments
@@ -81,13 +89,13 @@ impl ApplicationHandler for ApplicationWindow {
     /// * `event` - The received window event.
     fn window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                _event_loop.exit();
             }
 
             WindowEvent::Resized(size) => {
@@ -111,7 +119,6 @@ impl ApplicationHandler for ApplicationWindow {
                     self.instance.as_ref(),
                     self.window.as_ref(),
                 ) {
-                    window.request_redraw();
                     renderer.draw_frame(instance, window);
                 }
             }
