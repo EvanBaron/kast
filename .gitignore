@@ -2,6 +2,7 @@ Vulkan-Headers
 glslang
 target
 build_tools/*
+shaders/*
 
 # Direnv
 .envrc
