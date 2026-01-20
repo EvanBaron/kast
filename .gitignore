@@ -1,8 +1,7 @@
 Vulkan-Headers
+glslang
 target
 build_tools/*
-
-dev_resources/*
 
 # Direnv
 .envrc

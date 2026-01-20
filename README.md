@@ -22,6 +22,34 @@ Otherwise, you can enter the shell manually:
 nix-shell
 ```
 
+## Installation
+
+### Vulkan Headers
+
+```bash
+git clone https://github.com/KhronosGroup/Vulkan-Headers
+```
+
+```bash
+cd Vulkan-Headers && cmake -DCMAKE_INSTALL_PREFIX=build_tools && cmake --build . && cmake --install .
+```
+
+### GLSLang
+
+```bash
+git clone https://github.com/KhronosGroup/glslang
+```
+
+```bash
+cd glslang && \
+./update_glslang_sources.py && \
+mkdir build && \
+cmake -B ./build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build_tools && \
+cd build && \
+cmake --build . --config Release --target install
+```
+
+
 ## Running
 
 To run the application:
