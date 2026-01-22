@@ -58,3 +58,7 @@ cargo run -p kast
 - `vk_bindings/`: Custom `bindgen` generation of Vulkan C headers.
 - `shaders/`: Compiled SPIR-V shaders (runtime).
 - `shader_src/`: Source GLSL shaders.
+
+## Resources used
+
+[Vulkan Rust Tutorial by Lóránt Seres](https://vulkan-rust-tutorial.gitlab.io/)

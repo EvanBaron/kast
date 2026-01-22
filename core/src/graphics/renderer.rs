@@ -22,6 +22,7 @@ pub struct Renderer {
     pub index_buffer: AllocatedBuffer,
     pub index_buffer_offset: u64,
     pub device: VkDevice,
+    pub upload_command_pool: VkCommandPool,
     graphics_queue: VkQueue,
     present_queue: VkQueue,
 }
@@ -77,6 +78,27 @@ impl Renderer {
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT as VkMemoryPropertyFlags,
         );
 
+        let upload_command_pool_create_info = VkCommandPoolCreateInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            pNext: core::ptr::null(),
+            flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            queueFamilyIndex: instance.graphics_queue_family.family_index,
+        };
+
+        let mut upload_command_pool = core::ptr::null_mut();
+        unsafe {
+            let result = vkCreateCommandPool(
+                instance.device,
+                &upload_command_pool_create_info,
+                core::ptr::null_mut(),
+                &mut upload_command_pool,
+            );
+
+            if result != VK_SUCCESS {
+                panic!("Failed to create upload command pool. Error: {:?}.", result);
+            }
+        }
+
         Self {
             swapchain,
             render_pass,
@@ -90,6 +112,7 @@ impl Renderer {
             vertex_buffer_offset: 0,
             index_buffer,
             index_buffer_offset: 0,
+            upload_command_pool,
         }
     }
 
@@ -121,7 +144,7 @@ impl Renderer {
         // Copy data to Staging Buffer
         unsafe {
             let mut data = core::ptr::null_mut();
-            vkMapMemory(
+            let result = vkMapMemory(
                 self.device,
                 staging_buffer.memory,
                 0,
@@ -129,6 +152,10 @@ impl Renderer {
                 0,
                 &mut data,
             );
+
+            if result != VK_SUCCESS {
+                panic!("Failed to map memory. Error: {}.", result);
+            }
 
             // Copy vertices
             core::ptr::copy_nonoverlapping(vertices.as_ptr(), data as *mut Vertex, vertices.len());
@@ -201,7 +228,7 @@ impl Renderer {
         let command_buffer_allocate_info = VkCommandBufferAllocateInfo {
             sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             pNext: core::ptr::null(),
-            commandPool: self.frames[0].command_pool,
+            commandPool: self.upload_command_pool,
             level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             commandBufferCount: 1,
         };
@@ -240,7 +267,7 @@ impl Renderer {
             vkQueueSubmit(self.graphics_queue, 1, &submit_info, core::ptr::null_mut());
             vkQueueWaitIdle(self.graphics_queue);
 
-            vkFreeCommandBuffers(self.device, self.frames[0].command_pool, 1, &command_buffer);
+            vkFreeCommandBuffers(self.device, self.upload_command_pool, 1, &command_buffer);
         };
     }
 
@@ -660,6 +687,8 @@ impl Drop for Renderer {
 
             self.vertex_buffer.destroy(self.device);
             self.index_buffer.destroy(self.device);
+
+            vkDestroyCommandPool(self.device, self.upload_command_pool, core::ptr::null());
 
             self.pipeline.destroy();
             vkDestroyRenderPass(self.device, self.render_pass, core::ptr::null());
