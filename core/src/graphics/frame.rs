@@ -16,6 +16,11 @@ pub struct FrameData {
 }
 
 impl FrameData {
+    /// Creates a new frame data instance.
+    ///
+    /// # Arguments
+    /// * `device` - The Vulkan device.
+    /// * `graphics_queue_family` - The graphics queue family.
     pub fn new(device: VkDevice, graphics_queue_family: QueueFamily) -> Self {
         let command_pool_create_info = VkCommandPoolCreateInfo {
             sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,

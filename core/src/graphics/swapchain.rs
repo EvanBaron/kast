@@ -278,6 +278,11 @@ impl Swapchain {
         self.framebuffers = framebuffers;
     }
 
+    /// Selects the surface format for the swapchain that supports the correct color space.
+    ///
+    /// # Arguments
+    /// * `physical_device` - The physical device to query.
+    /// * `surface` - The surface to query.
     fn choose_surface_format(
         physical_device: VkPhysicalDevice,
         surface: VkSurfaceKHR,
