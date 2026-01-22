@@ -15,21 +15,13 @@ impl Vertex {
         }
     }
 
-    pub fn get_attribute_descriptions() -> [VkVertexInputAttributeDescription; 2] {
-        [
-            VkVertexInputAttributeDescription {
-                binding: 0,
-                location: 0,
-                format: VK_FORMAT_R32G32B32_SFLOAT,
-                offset: 0,
-            },
-            VkVertexInputAttributeDescription {
-                binding: 0,
-                location: 1,
-                format: VK_FORMAT_R32G32B32_SFLOAT,
-                offset: (std::mem::size_of::<f32>() * 3) as u32,
-            },
-        ]
+    pub fn get_attribute_descriptions() -> [VkVertexInputAttributeDescription; 1] {
+        [VkVertexInputAttributeDescription {
+            binding: 0,
+            location: 0,
+            format: VK_FORMAT_R32G32B32_SFLOAT,
+            offset: 0,
+        }]
     }
 }
 
