@@ -1,12 +1,15 @@
+use crate::graphics::buffer::AllocatedBuffer;
 use crate::graphics::frame::FrameData;
 use crate::graphics::instance::Instance;
 use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::swapchain::Swapchain;
+use crate::scene::Scene;
 use vk_bindings::*;
 use winit::window::Window;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 3;
+const GLOBAL_BUFFER_SIZE: u64 = 64 * 1024 * 1024;
 
 pub struct Renderer {
     pub swapchain: Swapchain,
@@ -14,8 +17,11 @@ pub struct Renderer {
     pub pipeline: Pipeline,
     pub frames: Vec<FrameData>,
     pub current_frame_index: usize,
-    pub mesh: Mesh,
-    device: VkDevice,
+    pub vertex_buffer: AllocatedBuffer,
+    pub vertex_buffer_offset: u64,
+    pub index_buffer: AllocatedBuffer,
+    pub index_buffer_offset: u64,
+    pub device: VkDevice,
     graphics_queue: VkQueue,
     present_queue: VkQueue,
 }
@@ -52,28 +58,23 @@ impl Renderer {
             ));
         }
 
-        let vertices: Vec<Vertex> = vec![
-            Vertex {
-                position: [-0.5, -0.5, 0.0],
-            },
-            Vertex {
-                position: [0.5, -0.5, 0.0],
-            },
-            Vertex {
-                position: [-0.5, 0.5, 0.0],
-            },
-            Vertex {
-                position: [0.5, 0.5, 0.0],
-            },
-        ];
-
-        let indices = vec![0, 1, 2, 1, 3, 2];
-
-        let mesh = Mesh::new(
+        // Global Buffers
+        let vertex_buffer = AllocatedBuffer::new(
             instance.device,
             instance.physical_device,
-            &vertices,
-            &indices,
+            GLOBAL_BUFFER_SIZE,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT as VkBufferUsageFlags
+                | VK_BUFFER_USAGE_TRANSFER_DST_BIT as VkBufferUsageFlags,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT as VkMemoryPropertyFlags,
+        );
+
+        let index_buffer = AllocatedBuffer::new(
+            instance.device,
+            instance.physical_device,
+            GLOBAL_BUFFER_SIZE,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT as VkBufferUsageFlags
+                | VK_BUFFER_USAGE_TRANSFER_DST_BIT as VkBufferUsageFlags,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT as VkMemoryPropertyFlags,
         );
 
         Self {
@@ -83,10 +84,163 @@ impl Renderer {
             frames,
             device: instance.device,
             current_frame_index: 0,
-            mesh: mesh,
             graphics_queue: instance.graphics_queue,
             present_queue: instance.present_queue,
+            vertex_buffer,
+            vertex_buffer_offset: 0,
+            index_buffer,
+            index_buffer_offset: 0,
         }
+    }
+
+    /// Saves a mesh to the global vertex buffer and index buffer.
+    ///
+    /// # Arguments
+    /// * `physical_device` - The physical device to use for memory allocation.
+    /// * `vertices` - The vertices to upload.
+    /// * `indices` - The indices to upload.
+    pub fn upload_mesh(
+        &mut self,
+        physical_device: VkPhysicalDevice,
+        vertices: &[Vertex],
+        indices: &[u32],
+    ) -> Mesh {
+        let vertex_buffer_size = (vertices.len() * std::mem::size_of::<Vertex>()) as VkDeviceSize;
+        let index_buffer_size = (indices.len() * std::mem::size_of::<u32>()) as VkDeviceSize;
+
+        // Create Staging Buffer
+        let staging_buffer = AllocatedBuffer::new(
+            self.device,
+            physical_device,
+            vertex_buffer_size + index_buffer_size,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT as VkBufferUsageFlags,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT as VkMemoryPropertyFlags
+                | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT as VkMemoryPropertyFlags,
+        );
+
+        // Copy data to Staging Buffer
+        unsafe {
+            let mut data = core::ptr::null_mut();
+            vkMapMemory(
+                self.device,
+                staging_buffer.memory,
+                0,
+                staging_buffer.size,
+                0,
+                &mut data,
+            );
+
+            // Copy vertices
+            core::ptr::copy_nonoverlapping(vertices.as_ptr(), data as *mut Vertex, vertices.len());
+
+            // Copy indices (offset by vertex data size)
+            let index_offset = data.add(vertices.len() * std::mem::size_of::<Vertex>()) as *mut u32;
+            core::ptr::copy_nonoverlapping(indices.as_ptr(), index_offset, indices.len());
+
+            vkUnmapMemory(self.device, staging_buffer.memory);
+        }
+
+        // Upload from Staging to Global Buffers
+        self.immediate_submit(|cmd| {
+            let vertex_copy = VkBufferCopy {
+                srcOffset: 0,
+                dstOffset: self.vertex_buffer_offset,
+                size: vertex_buffer_size,
+            };
+
+            unsafe {
+                vkCmdCopyBuffer(
+                    cmd,
+                    staging_buffer.handle,
+                    self.vertex_buffer.handle,
+                    1,
+                    &vertex_copy,
+                );
+            }
+
+            let index_copy = VkBufferCopy {
+                srcOffset: vertex_buffer_size,
+                dstOffset: self.index_buffer_offset,
+                size: index_buffer_size,
+            };
+
+            unsafe {
+                vkCmdCopyBuffer(
+                    cmd,
+                    staging_buffer.handle,
+                    self.index_buffer.handle,
+                    1,
+                    &index_copy,
+                );
+            }
+        });
+
+        staging_buffer.destroy(self.device);
+
+        let mesh = Mesh::new(
+            indices.len() as u32,
+            (self.index_buffer_offset / std::mem::size_of::<u32>() as u64) as u32,
+            (self.vertex_buffer_offset / std::mem::size_of::<Vertex>() as u64) as i32,
+        );
+
+        self.vertex_buffer_offset += vertex_buffer_size;
+        self.index_buffer_offset += index_buffer_size;
+
+        mesh
+    }
+
+    /// Submits a function to the immediate command buffer.
+    ///
+    /// # Arguments
+    /// * `function` - The function to submit.
+    fn immediate_submit<F>(&self, function: F)
+    where
+        F: FnOnce(VkCommandBuffer),
+    {
+        let command_buffer_allocate_info = VkCommandBufferAllocateInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            pNext: core::ptr::null(),
+            commandPool: self.frames[0].command_pool,
+            level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            commandBufferCount: 1,
+        };
+
+        let mut command_buffer = core::ptr::null_mut();
+        unsafe {
+            vkAllocateCommandBuffers(
+                self.device,
+                &command_buffer_allocate_info,
+                &mut command_buffer,
+            );
+
+            let command_buffer_begin_info = VkCommandBufferBeginInfo {
+                sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                pNext: core::ptr::null(),
+                flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                pInheritanceInfo: core::ptr::null(),
+            };
+
+            vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+            function(command_buffer);
+            vkEndCommandBuffer(command_buffer);
+
+            let submit_info = VkSubmitInfo {
+                sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                pNext: core::ptr::null(),
+                waitSemaphoreCount: 0,
+                pWaitSemaphores: core::ptr::null(),
+                pWaitDstStageMask: core::ptr::null(),
+                commandBufferCount: 1,
+                pCommandBuffers: &command_buffer,
+                signalSemaphoreCount: 0,
+                pSignalSemaphores: core::ptr::null(),
+            };
+
+            vkQueueSubmit(self.graphics_queue, 1, &submit_info, core::ptr::null_mut());
+            vkQueueWaitIdle(self.graphics_queue);
+
+            vkFreeCommandBuffers(self.device, self.frames[0].command_pool, 1, &command_buffer);
+        };
     }
 
     /// Creates a renderpass with a single color attachment.
@@ -182,7 +336,7 @@ impl Renderer {
         render_pass
     }
 
-    pub fn draw_frame(&mut self, instance: &Instance, window: &Window) {
+    pub fn draw_frame(&mut self, instance: &Instance, window: &Window, scene: &Scene) {
         self.current_frame_index = (self.current_frame_index + 1) % self.frames.len();
 
         // Wait for the previous frame to finish processing.
@@ -347,7 +501,7 @@ impl Renderer {
                 scissors.as_ptr(),
             );
 
-            let vertex_buffers = [self.mesh.vertex_buffer];
+            let vertex_buffers = [self.vertex_buffer.handle];
             let offsets = [0];
 
             vkCmdBindVertexBuffers(
@@ -360,19 +514,21 @@ impl Renderer {
 
             vkCmdBindIndexBuffer(
                 self.frames[self.current_frame_index].command_buffer,
-                self.mesh.index_buffer,
+                self.index_buffer.handle,
                 0,
                 VK_INDEX_TYPE_UINT32,
             );
 
-            vkCmdDrawIndexed(
-                self.frames[self.current_frame_index].command_buffer,
-                self.mesh.index_count,
-                1,
-                0,
-                0,
-                0,
-            );
+            for mesh in &scene.meshes {
+                vkCmdDrawIndexed(
+                    self.frames[self.current_frame_index].command_buffer,
+                    mesh.index_count,
+                    1,
+                    mesh.first_index,
+                    mesh.vertex_offset,
+                    0,
+                );
+            }
 
             vkCmdEndRenderPass(self.frames[self.current_frame_index].command_buffer);
         }
@@ -501,7 +657,9 @@ impl Drop for Renderer {
                 frame.destroy(self.device);
             }
 
-            self.mesh.destroy(self.device);
+            self.vertex_buffer.destroy(self.device);
+            self.index_buffer.destroy(self.device);
+
             self.pipeline.destroy();
             vkDestroyRenderPass(self.device, self.render_pass, core::ptr::null());
             self.swapchain.destroy();

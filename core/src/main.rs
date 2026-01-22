@@ -2,6 +2,7 @@ use crate::window::ApplicationWindow;
 use winit::event_loop::EventLoop;
 
 mod graphics;
+mod scene;
 mod window;
 
 fn main() {

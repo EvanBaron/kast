@@ -1,3 +1,6 @@
+use crate::graphics::instance::Instance;
+use crate::graphics::renderer::Renderer;
+use crate::scene::Scene;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -5,9 +8,6 @@ use winit::{
     raw_window_handle::{HasDisplayHandle, RawDisplayHandle},
     window::{Window, WindowAttributes},
 };
-
-use crate::graphics::instance::Instance;
-use crate::graphics::renderer::Renderer;
 
 const WINDOW_TITLE: &'static str = "Kast";
 
@@ -43,8 +43,9 @@ pub fn get_required_instance_extensions(display_handle: &impl HasDisplayHandle) 
 #[derive(Default)]
 pub struct ApplicationWindow {
     pub renderer: Option<Renderer>,
-    pub instance: Option<Instance>,
+    pub scene: Option<Scene>,
     pub window: Option<Window>,
+    pub instance: Option<Instance>,
 }
 
 impl ApplicationHandler for ApplicationWindow {
@@ -65,11 +66,13 @@ impl ApplicationHandler for ApplicationWindow {
                 .unwrap();
 
             let instance = Instance::new(event_loop, &window);
-            let renderer = Renderer::new(&instance, &window);
+            let mut renderer = Renderer::new(&instance, &window);
+            let scene = Scene::new(&mut renderer, &instance);
 
             self.instance = Some(instance);
-            self.renderer = Some(renderer);
             self.window = Some(window);
+            self.renderer = Some(renderer);
+            self.scene = Some(scene);
 
             println!("Window Application created");
         }
@@ -114,12 +117,13 @@ impl ApplicationHandler for ApplicationWindow {
             }
 
             WindowEvent::RedrawRequested => {
-                if let (Some(renderer), Some(instance), Some(window)) = (
+                if let (Some(renderer), Some(scene), Some(instance), Some(window)) = (
                     self.renderer.as_mut(),
+                    self.scene.as_ref(),
                     self.instance.as_ref(),
                     self.window.as_ref(),
                 ) {
-                    renderer.draw_frame(instance, window);
+                    renderer.draw_frame(instance, window, scene);
                 }
             }
 
