@@ -3,6 +3,7 @@ glslang
 target
 build_tools/*
 shaders/*
+TODO.md
 
 # Direnv
 .envrc

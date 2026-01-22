@@ -93,7 +93,7 @@ impl Renderer {
         }
     }
 
-    /// Saves a mesh to the global vertex buffer and index buffer.
+    /// Saves a mesh to the global vertex buffer and index buffer using a staging buffer.
     ///
     /// # Arguments
     /// * `physical_device` - The physical device to use for memory allocation.
@@ -189,7 +189,8 @@ impl Renderer {
         mesh
     }
 
-    /// Submits a function to the immediate command buffer.
+    /// Submits a temporary command buffer, records the function's command, submits it
+    /// and waits for completion.
     ///
     /// # Arguments
     /// * `function` - The function to submit.

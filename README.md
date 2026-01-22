@@ -22,43 +22,39 @@ Otherwise, you can enter the shell manually:
 nix-shell
 ```
 
-## Installation
+## Setup & Dependencies
 
-### Vulkan Headers
+The project relies on Vulkan Headers and `glslangValidator` (for shader compilation).
 
+### 1. Vulkan Headers
+This project generates raw bindings from the Vulkan C headers.
 ```bash
 git clone https://github.com/KhronosGroup/Vulkan-Headers
+cd Vulkan-Headers && cmake -DCMAKE_INSTALL_PREFIX=../build_tools . && cmake --build . && cmake --install .
 ```
 
-```bash
-cd Vulkan-Headers && cmake -DCMAKE_INSTALL_PREFIX=build_tools && cmake --build . && cmake --install .
-```
-
-### GLSLang
-
+### 2. GLSLang (Shader Compiler)
+Required to compile GLSL shaders into SPIR-V.
 ```bash
 git clone https://github.com/KhronosGroup/glslang
-```
-
-```bash
 cd glslang && \
 ./update_glslang_sources.py && \
-mkdir build && \
-cmake -B ./build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=build_tools && \
+cmake -B ./build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../build_tools && \
 cd build && \
 cmake --build . --config Release --target install
 ```
-
 
 ## Running
 
 To run the application:
 
 ```bash
-cargo run -p core
+cargo run -p kast
 ```
 
 ## Project Structure
 
-- `core/`: The main application logic and Vulkan renderer.
-- `vk_bindings/`: Low-level Vulkan bindings generated from headers.
+- `core/`: The main game engine logic, renderer, and scene management.
+- `vk_bindings/`: Custom `bindgen` generation of Vulkan C headers.
+- `shaders/`: Compiled SPIR-V shaders (runtime).
+- `shader_src/`: Source GLSL shaders.
