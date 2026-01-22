@@ -1,5 +1,6 @@
 use crate::graphics::frame::FrameData;
 use crate::graphics::instance::Instance;
+use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::swapchain::Swapchain;
 use vk_bindings::*;
@@ -13,6 +14,7 @@ pub struct Renderer {
     pub pipeline: Pipeline,
     pub frames: Vec<FrameData>,
     pub current_frame_index: usize,
+    pub mesh: Mesh,
     device: VkDevice,
     graphics_queue: VkQueue,
     present_queue: VkQueue,
@@ -50,6 +52,27 @@ impl Renderer {
             ));
         }
 
+        let vertices: Vec<Vertex> = vec![
+            Vertex {
+                position: [0.0, -0.5, 0.0],
+            },
+            Vertex {
+                position: [0.5, 0.5, 0.0],
+            },
+            Vertex {
+                position: [-0.5, 0.5, 0.0],
+            },
+        ];
+
+        let indices = vec![0, 1, 2];
+
+        let mesh = Mesh::new(
+            instance.device,
+            instance.physical_device,
+            &vertices,
+            &indices,
+        );
+
         Self {
             swapchain,
             render_pass,
@@ -57,6 +80,7 @@ impl Renderer {
             frames,
             device: instance.device,
             current_frame_index: 0,
+            mesh: mesh,
             graphics_queue: instance.graphics_queue,
             present_queue: instance.present_queue,
         }
@@ -320,10 +344,29 @@ impl Renderer {
                 scissors.as_ptr(),
             );
 
-            vkCmdDraw(
+            let vertex_buffers = [self.mesh.vertex_buffer];
+            let offsets = [0];
+
+            vkCmdBindVertexBuffers(
                 self.frames[self.current_frame_index].command_buffer,
-                3,
+                0,
+                vertex_buffers.len() as u32,
+                vertex_buffers.as_ptr(),
+                offsets.as_ptr(),
+            );
+
+            vkCmdBindIndexBuffer(
+                self.frames[self.current_frame_index].command_buffer,
+                self.mesh.index_buffer,
+                0,
+                VK_INDEX_TYPE_UINT32,
+            );
+
+            vkCmdDrawIndexed(
+                self.frames[self.current_frame_index].command_buffer,
+                self.mesh.index_count,
                 1,
+                0,
                 0,
                 0,
             );
@@ -409,6 +452,11 @@ impl Renderer {
         }
     }
 
+    /// Recreates the swapchain and the framebuffers.
+    ///
+    /// # Arguments
+    /// * `instance` - The instance to query.
+    /// * `window` - The window to query.
     pub fn resize(&mut self, instance: &Instance, window: &Window) {
         let frame = &mut self.frames[self.current_frame_index];
         frame
@@ -450,6 +498,7 @@ impl Drop for Renderer {
                 frame.destroy(self.device);
             }
 
+            self.mesh.destroy(self.device);
             self.pipeline.destroy();
             vkDestroyRenderPass(self.device, self.render_pass, core::ptr::null());
             self.swapchain.destroy();

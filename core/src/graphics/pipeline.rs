@@ -1,6 +1,8 @@
 use std::io::Read;
 use vk_bindings::*;
 
+use crate::graphics::mesh::Vertex;
+
 pub struct Pipeline {
     pub handle: VkPipeline,
     pub layout: VkPipelineLayout,
@@ -8,12 +10,17 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    /// Creates a new pipeline instance.
+    ///
+    /// # Arguments
+    /// * `device` - The Vulkan device.
+    /// * `render_pass` - The Vulkan render pass.
     pub fn new(device: VkDevice, render_pass: VkRenderPass) -> Self {
-        let vert_shader_code = Self::read_shader_file("shaders/00_hardcoded_triangle.vert.spv");
-        let frag_shader_code = Self::read_shader_file("shaders/00_hardcoded_red.frag.spv");
+        let vert_shader_code = read_shader_file("shaders/01_attribute_position.vert.spv");
+        let frag_shader_code = read_shader_file("shaders/00_hardcoded_red.frag.spv");
 
-        let vert_shader_module = Self::create_shader_module(device, &vert_shader_code);
-        let frag_shader_module = Self::create_shader_module(device, &frag_shader_code);
+        let vert_shader_module = create_shader_module(device, &vert_shader_code);
+        let frag_shader_module = create_shader_module(device, &frag_shader_code);
 
         // Pipeline Layout
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfo {
@@ -62,15 +69,21 @@ impl Pipeline {
             },
         ];
 
+        let vertex_binding_description = Vertex::get_binding_description();
+        let vertex_bindings = [vertex_binding_description];
+
+        let vertex_attribute_descriptions = Vertex::get_attribute_descriptions();
+        let vertex_attributes = vertex_attribute_descriptions;
+
         // Vertex Input
         let vertex_input_state_create_info = VkPipelineVertexInputStateCreateInfo {
             sType: VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             pNext: core::ptr::null(),
             flags: 0x0,
-            vertexBindingDescriptionCount: 0,
-            pVertexBindingDescriptions: core::ptr::null(),
-            vertexAttributeDescriptionCount: 0,
-            pVertexAttributeDescriptions: core::ptr::null(),
+            vertexBindingDescriptionCount: vertex_bindings.len() as u32,
+            pVertexBindingDescriptions: vertex_bindings.as_ptr(),
+            vertexAttributeDescriptionCount: vertex_attributes.len() as u32,
+            pVertexAttributeDescriptions: vertex_attributes.as_ptr(),
         };
 
         // Input Assembly
@@ -112,7 +125,7 @@ impl Pipeline {
             rasterizerDiscardEnable: VK_FALSE,
             polygonMode: VK_POLYGON_MODE_FILL,
             cullMode: VK_CULL_MODE_BACK_BIT as VkCullModeFlags,
-            frontFace: VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            frontFace: VK_FRONT_FACE_CLOCKWISE,
             depthBiasEnable: VK_FALSE,
             depthBiasConstantFactor: 0.0,
             depthBiasClamp: 0.0,
@@ -183,7 +196,7 @@ impl Pipeline {
         }];
 
         println!("Creating pipeline.");
-        let mut graphics_pipelines = [core::ptr::null_mut(); 1];
+        let mut graphics_pipelines = core::ptr::null_mut();
         let result = unsafe {
             vkCreateGraphicsPipelines(
                 device,
@@ -191,7 +204,7 @@ impl Pipeline {
                 pipelines_create_infos.len() as u32,
                 pipelines_create_infos.as_ptr(),
                 core::ptr::null(),
-                graphics_pipelines.as_mut_ptr(),
+                &mut graphics_pipelines,
             )
         };
 
@@ -207,38 +220,9 @@ impl Pipeline {
 
         Self {
             device,
-            handle: graphics_pipelines[0],
+            handle: graphics_pipelines,
             layout: pipeline_layout,
         }
-    }
-
-    fn read_shader_file(file_path: &str) -> Vec<u8> {
-        let mut file = std::fs::File::open(file_path).expect("Failed to open shader file");
-        let mut bytecode = Vec::new();
-        file.read_to_end(&mut bytecode)
-            .expect("Failed to read shader file");
-
-        bytecode
-    }
-
-    fn create_shader_module(device: VkDevice, code: &[u8]) -> VkShaderModule {
-        let create_info = VkShaderModuleCreateInfo {
-            sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            pNext: core::ptr::null(),
-            flags: 0x0,
-            codeSize: code.len(),
-            pCode: code.as_ptr() as *const u32,
-        };
-
-        let mut module = core::ptr::null_mut();
-        let result =
-            unsafe { vkCreateShaderModule(device, &create_info, core::ptr::null(), &mut module) };
-
-        if result != VK_SUCCESS {
-            panic!("Failed to create pipeline. Error: {}", result);
-        }
-
-        module
     }
 
     pub fn destroy(&mut self) {
@@ -247,4 +231,42 @@ impl Pipeline {
             vkDestroyPipelineLayout(self.device, self.layout, core::ptr::null());
         }
     }
+}
+
+/// Helper function to read shader bytecode from a file.
+///
+/// # Arguments
+/// * `file_path` - The path to the shader file.
+fn read_shader_file(file_path: &str) -> Vec<u8> {
+    let mut file = std::fs::File::open(file_path).expect("Failed to open shader file");
+    let mut bytecode = Vec::new();
+    file.read_to_end(&mut bytecode)
+        .expect("Failed to read shader file");
+
+    bytecode
+}
+
+/// Helper function to create a shader module from bytecode.
+///
+/// # Arguments
+/// * `device` - The Vulkan device.
+/// * `code` - The shader bytecode.
+fn create_shader_module(device: VkDevice, code: &[u8]) -> VkShaderModule {
+    let create_info = VkShaderModuleCreateInfo {
+        sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        pNext: core::ptr::null(),
+        flags: 0x0,
+        codeSize: code.len(),
+        pCode: code.as_ptr() as *const u32,
+    };
+
+    let mut module = core::ptr::null_mut();
+    let result =
+        unsafe { vkCreateShaderModule(device, &create_info, core::ptr::null(), &mut module) };
+
+    if result != VK_SUCCESS {
+        panic!("Failed to create pipeline. Error: {}", result);
+    }
+
+    module
 }
