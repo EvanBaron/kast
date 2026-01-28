@@ -1,9 +1,11 @@
 use crate::graphics::buffer::AllocatedBuffer;
+use crate::graphics::descriptors::{DescriptorPool, DescriptorSetLayout};
 use crate::graphics::frame::FrameData;
 use crate::graphics::instance::Instance;
 use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::swapchain::Swapchain;
+use crate::graphics::uniforms::{CameraData, ObjectData};
 use crate::scene::Scene;
 use vk_bindings::*;
 use winit::window::Window;
@@ -23,6 +25,8 @@ pub struct Renderer {
     pub index_buffer_offset: u64,
     pub device: VkDevice,
     pub upload_command_pool: VkCommandPool,
+    pub descriptor_set_layout: DescriptorSetLayout,
+    pub descriptor_pool: DescriptorPool,
     graphics_queue: VkQueue,
     present_queue: VkQueue,
 }
@@ -47,7 +51,25 @@ impl Renderer {
 
         let render_pass = Self::create_renderpass(instance.device, swapchain.surface_format.format);
 
-        let pipeline = Pipeline::new(instance.device, render_pass);
+        // Descriptor Pool and Layout
+        let descriptor_set_layout = DescriptorSetLayout::new(instance.device);
+
+        let pool_sizes = [
+            VkDescriptorPoolSize {
+                type_: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                descriptorCount: MAX_FRAMES_IN_FLIGHT as u32,
+            },
+            VkDescriptorPoolSize {
+                type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorCount: MAX_FRAMES_IN_FLIGHT as u32,
+            },
+        ];
+
+        let descriptor_pool =
+            DescriptorPool::new(instance.device, MAX_FRAMES_IN_FLIGHT as u32, &pool_sizes);
+
+        // Pipeline uses the descriptor set layout
+        let pipeline = Pipeline::new(instance.device, render_pass, descriptor_set_layout.handle);
 
         swapchain.create_framebuffers(instance.device, render_pass);
 
@@ -55,7 +77,10 @@ impl Renderer {
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             frames.push(FrameData::new(
                 instance.device,
+                instance.physical_device,
                 instance.graphics_queue_family,
+                &descriptor_pool,
+                descriptor_set_layout.handle,
             ));
         }
 
@@ -113,6 +138,8 @@ impl Renderer {
             index_buffer,
             index_buffer_offset: 0,
             upload_command_pool,
+            descriptor_set_layout,
+            descriptor_pool,
         }
     }
 
@@ -130,6 +157,14 @@ impl Renderer {
     ) -> Mesh {
         let vertex_buffer_size = (vertices.len() * std::mem::size_of::<Vertex>()) as VkDeviceSize;
         let index_buffer_size = (indices.len() * std::mem::size_of::<u32>()) as VkDeviceSize;
+
+        if self.vertex_buffer_offset + vertex_buffer_size > GLOBAL_BUFFER_SIZE {
+            panic!("Global Vertex Buffer Full! Cannot allocate more geometry.");
+        }
+
+        if self.index_buffer_offset + index_buffer_size > GLOBAL_BUFFER_SIZE {
+            panic!("Global Index Buffer Full! Cannot allocate more geometry.");
+        }
 
         // Create Staging Buffer
         let staging_buffer = AllocatedBuffer::new(
@@ -395,6 +430,33 @@ impl Renderer {
             frame.delete_queue_image_views.clear();
         }
 
+        // Update Uniform Buffer for this frame
+        let camera_data = CameraData {
+            position: [0.0, -0.25, 0.0, 0.0],
+            aspect_ratio: self.swapchain.extent.width as f32 / self.swapchain.extent.height as f32,
+        };
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                &camera_data,
+                frame.global_buffer_mapped as *mut CameraData,
+                1,
+            );
+        }
+
+        let mut object_data_array = Vec::with_capacity(scene.entities.len());
+        for entity in &scene.entities {
+            object_data_array.push(entity.data);
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                object_data_array.as_ptr(),
+                frame.object_buffer_mapped as *mut ObjectData,
+                object_data_array.len(),
+            );
+        }
+
         // Acquire the next image from the swapchain.
         let mut image_index: u32 = 0;
         let result = unsafe {
@@ -498,6 +560,20 @@ impl Renderer {
                 self.pipeline.handle,
             );
 
+            // Bind Descriptor Sets
+            let descriptor_sets = [self.frames[self.current_frame_index].descriptor_set];
+
+            vkCmdBindDescriptorSets(
+                self.frames[self.current_frame_index].command_buffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                self.pipeline.layout,
+                0,
+                descriptor_sets.len() as u32,
+                descriptor_sets.as_ptr(),
+                0,
+                core::ptr::null(),
+            );
+
             let viewports = [VkViewport {
                 x: 0.0,
                 y: 0.0,
@@ -547,13 +623,25 @@ impl Renderer {
                 VK_INDEX_TYPE_UINT32,
             );
 
-            for mesh in &scene.meshes {
+            let mut object_index: u32 = 0;
+            for entity in &scene.entities {
+                vkCmdPushConstants(
+                    self.frames[self.current_frame_index].command_buffer,
+                    self.pipeline.layout,
+                    VK_SHADER_STAGE_VERTEX_BIT as VkShaderStageFlags,
+                    0,
+                    std::mem::size_of::<u32>() as u32,
+                    &object_index as *const u32 as *const core::ffi::c_void,
+                );
+
+                object_index += 1;
+
                 vkCmdDrawIndexed(
                     self.frames[self.current_frame_index].command_buffer,
-                    mesh.index_count,
+                    entity.mesh.index_count,
                     1,
-                    mesh.first_index,
-                    mesh.vertex_offset,
+                    entity.mesh.first_index,
+                    entity.mesh.vertex_offset,
                     0,
                 );
             }
@@ -684,6 +772,9 @@ impl Drop for Renderer {
             for frame in self.frames.iter_mut() {
                 frame.destroy(self.device);
             }
+
+            self.descriptor_pool.destroy(self.device);
+            self.descriptor_set_layout.destroy(self.device);
 
             self.vertex_buffer.destroy(self.device);
             self.index_buffer.destroy(self.device);

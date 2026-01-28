@@ -15,22 +15,35 @@ impl Pipeline {
     /// # Arguments
     /// * `device` - The Vulkan device.
     /// * `render_pass` - The Vulkan render pass.
-    pub fn new(device: VkDevice, render_pass: VkRenderPass) -> Self {
-        let vert_shader_code = read_shader_file("shaders/01_attribute_position.vert.spv");
+    /// * `descriptor_set_layout` - The descriptor set layout to bind.
+    pub fn new(
+        device: VkDevice,
+        render_pass: VkRenderPass,
+        descriptor_set_layout: VkDescriptorSetLayout,
+    ) -> Self {
+        let vert_shader_code = read_shader_file("shaders/02_ubo_single_descriptor.vert.spv");
         let frag_shader_code = read_shader_file("shaders/00_hardcoded_red.frag.spv");
 
         let vert_shader_module = create_shader_module(device, &vert_shader_code);
         let frag_shader_module = create_shader_module(device, &frag_shader_code);
 
+        let push_constants_size = 1 * std::mem::size_of::<u32>() as u32;
+        let push_constants_ranges = [VkPushConstantRange {
+            stageFlags: VK_SHADER_STAGE_VERTEX_BIT,
+            offset: 0,
+            size: push_constants_size,
+        }];
+
         // Pipeline Layout
+        let set_layouts = [descriptor_set_layout];
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfo {
             sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             pNext: core::ptr::null(),
             flags: 0x0,
-            setLayoutCount: 0,
-            pSetLayouts: core::ptr::null(),
-            pushConstantRangeCount: 0,
-            pPushConstantRanges: core::ptr::null(),
+            setLayoutCount: set_layouts.len() as u32,
+            pSetLayouts: set_layouts.as_ptr(),
+            pushConstantRangeCount: push_constants_ranges.len() as u32,
+            pPushConstantRanges: push_constants_ranges.as_ptr(),
         };
 
         println!("Creating pipeline layout.");

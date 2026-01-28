@@ -25,6 +25,8 @@ impl Vertex {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct Mesh {
     pub index_count: u32,
     pub first_index: u32,
