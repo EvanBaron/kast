@@ -1,7 +1,7 @@
 use crate::graphics::instance::Instance;
 use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::renderer::Renderer;
-use crate::graphics::uniforms::ObjectData;
+use crate::graphics::uniforms::{CameraData, ObjectData};
 
 const SQUARE_VERTICES: &[Vertex] = &[
     Vertex {
@@ -39,13 +39,20 @@ pub struct Entity {
 }
 
 pub struct Scene {
+    pub camera_data: CameraData,
     pub entities: Vec<Entity>,
 }
 
 impl Scene {
     pub fn new(renderer: &mut Renderer, instance: &Instance) -> Self {
+        let camera_data = CameraData {
+            position: [0.0, 0.0, -0.5, 0.0],
+            aspect_ratio: 1.0, // Redefined after
+        };
+
         let square =
             renderer.upload_mesh(instance.physical_device, &SQUARE_VERTICES, SQUARE_INDICES);
+
         let triangle = renderer.upload_mesh(
             instance.physical_device,
             &TRIANGLE_VERTICES,
@@ -77,6 +84,7 @@ impl Scene {
         };
 
         Self {
+            camera_data,
             entities: vec![entity1, entity2, entity3],
         }
     }

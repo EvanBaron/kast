@@ -1,10 +1,12 @@
 use crate::graphics::instance::Instance;
 use crate::graphics::renderer::Renderer;
 use crate::scene::Scene;
+use std::collections::HashSet;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::ActiveEventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     raw_window_handle::{HasDisplayHandle, RawDisplayHandle},
     window::{Window, WindowAttributes},
 };
@@ -46,6 +48,7 @@ pub struct ApplicationWindow {
     pub scene: Option<Scene>,
     pub window: Option<Window>,
     pub instance: Option<Instance>,
+    pub keys_pressed: HashSet<KeyCode>,
 }
 
 impl ApplicationHandler for ApplicationWindow {
@@ -97,6 +100,16 @@ impl ApplicationHandler for ApplicationWindow {
         event: winit::event::WindowEvent,
     ) {
         match event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(key_code) = event.physical_key {
+                    if event.state.is_pressed() {
+                        self.keys_pressed.insert(key_code);
+                    } else {
+                        self.keys_pressed.remove(&key_code);
+                    }
+                }
+            }
+
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
@@ -119,10 +132,28 @@ impl ApplicationHandler for ApplicationWindow {
             WindowEvent::RedrawRequested => {
                 if let (Some(renderer), Some(scene), Some(instance), Some(window)) = (
                     self.renderer.as_mut(),
-                    self.scene.as_ref(),
+                    self.scene.as_mut(),
                     self.instance.as_ref(),
                     self.window.as_ref(),
                 ) {
+                    let speed = 0.002;
+
+                    if self.keys_pressed.contains(&KeyCode::KeyW) {
+                        scene.camera_data.position[1] -= speed;
+                    }
+                    if self.keys_pressed.contains(&KeyCode::KeyS) {
+                        scene.camera_data.position[1] += speed;
+                    }
+                    if self.keys_pressed.contains(&KeyCode::KeyA) {
+                        scene.camera_data.position[0] -= speed;
+                    }
+                    if self.keys_pressed.contains(&KeyCode::KeyD) {
+                        scene.camera_data.position[0] += speed;
+                    }
+
+                    scene.entities[0].data.position[0] = scene.camera_data.position[0];
+                    scene.entities[0].data.position[1] = scene.camera_data.position[1];
+
                     renderer.draw_frame(instance, window, scene);
                 }
             }

@@ -399,7 +399,7 @@ impl Renderer {
         render_pass
     }
 
-    pub fn draw_frame(&mut self, instance: &Instance, window: &Window, scene: &Scene) {
+    pub fn draw_frame(&mut self, instance: &Instance, window: &Window, scene: &mut Scene) {
         self.current_frame_index = (self.current_frame_index + 1) % self.frames.len();
 
         // Wait for the previous frame to finish processing.
@@ -430,15 +430,13 @@ impl Renderer {
             frame.delete_queue_image_views.clear();
         }
 
-        // Update Uniform Buffer for this frame
-        let camera_data = CameraData {
-            position: [0.0, -0.25, 0.0, 0.0],
-            aspect_ratio: self.swapchain.extent.width as f32 / self.swapchain.extent.height as f32,
-        };
+        // Handle camera data update
+        scene.camera_data.aspect_ratio =
+            self.swapchain.extent.width as f32 / self.swapchain.extent.height as f32;
 
         unsafe {
             core::ptr::copy_nonoverlapping(
-                &camera_data,
+                &scene.camera_data,
                 frame.global_buffer_mapped as *mut CameraData,
                 1,
             );
