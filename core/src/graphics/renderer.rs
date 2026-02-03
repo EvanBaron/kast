@@ -1,6 +1,6 @@
 use crate::graphics::buffer::AllocatedBuffer;
 use crate::graphics::descriptors::{DescriptorPool, DescriptorSetLayout};
-use crate::graphics::frame::FrameData;
+use crate::graphics::frame::{FrameData, MAX_OBJECT};
 use crate::graphics::instance::Instance;
 use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::pipeline::Pipeline;
@@ -442,17 +442,21 @@ impl Renderer {
             );
         }
 
-        let mut object_data_array = Vec::with_capacity(scene.entities.len());
-        for entity in &scene.entities {
-            object_data_array.push(entity.data);
-        }
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                object_data_array.as_ptr(),
+        // Create the slice
+        let gpu_slice = unsafe {
+            std::slice::from_raw_parts_mut(
                 frame.object_buffer_mapped as *mut ObjectData,
-                object_data_array.len(),
-            );
+                MAX_OBJECT,
+            )
+        };
+
+        // Copy the entity data into the GPU slice
+        for (i, entity) in scene.entities.iter().enumerate() {
+            if i >= MAX_OBJECT {
+                break;
+            }
+
+            gpu_slice[i] = entity.data;
         }
 
         // Acquire the next image from the swapchain.

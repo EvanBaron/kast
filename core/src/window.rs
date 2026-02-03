@@ -1,7 +1,7 @@
 use crate::graphics::instance::Instance;
 use crate::graphics::renderer::Renderer;
 use crate::scene::Scene;
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Instant};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -49,6 +49,7 @@ pub struct ApplicationWindow {
     pub window: Option<Window>,
     pub instance: Option<Instance>,
     pub keys_pressed: HashSet<KeyCode>,
+    pub last_frame_time: Option<Instant>,
 }
 
 impl ApplicationHandler for ApplicationWindow {
@@ -76,6 +77,8 @@ impl ApplicationHandler for ApplicationWindow {
             self.window = Some(window);
             self.renderer = Some(renderer);
             self.scene = Some(scene);
+
+            self.last_frame_time = Some(Instant::now());
 
             println!("Window Application created");
         }
@@ -130,13 +133,24 @@ impl ApplicationHandler for ApplicationWindow {
             }
 
             WindowEvent::RedrawRequested => {
-                if let (Some(renderer), Some(scene), Some(instance), Some(window)) = (
+                if let (
+                    Some(renderer),
+                    Some(scene),
+                    Some(instance),
+                    Some(window),
+                    Some(last_time),
+                ) = (
                     self.renderer.as_mut(),
                     self.scene.as_mut(),
                     self.instance.as_ref(),
                     self.window.as_ref(),
+                    self.last_frame_time.as_mut(),
                 ) {
-                    let speed = 0.002;
+                    let now = Instant::now();
+                    let delta_time = now.duration_since(*last_time).as_secs_f32();
+                    *last_time = now;
+
+                    let speed = 1.0 * delta_time;
 
                     if self.keys_pressed.contains(&KeyCode::KeyW) {
                         scene.camera_data.position[1] -= speed;

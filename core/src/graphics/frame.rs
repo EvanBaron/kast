@@ -4,7 +4,7 @@ use crate::graphics::instance::QueueFamily;
 use crate::graphics::uniforms::{CameraData, ObjectData};
 use vk_bindings::*;
 
-const MAX_OBJECT: usize = 10_000;
+pub const MAX_OBJECT: usize = 10_000;
 
 /// Holds the resources associated with a single frame in flight.
 pub struct FrameData {
