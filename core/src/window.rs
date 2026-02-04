@@ -70,7 +70,8 @@ impl ApplicationHandler for ApplicationWindow {
                 .unwrap();
 
             let instance = Instance::new(event_loop, &window);
-            let mut renderer = Renderer::new(&instance, &window);
+            let textures = Scene::get_textures();
+            let mut renderer = Renderer::new(&instance, &window, &textures);
             let scene = Scene::new(&mut renderer, &instance);
 
             self.instance = Some(instance);

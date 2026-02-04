@@ -1,4 +1,5 @@
 use crate::graphics::instance::QueueFamily;
+use crate::graphics::utils;
 use vk_bindings::*;
 use winit::window::Window;
 
@@ -180,46 +181,14 @@ impl Swapchain {
         }
 
         let mut image_views = Vec::with_capacity(image_count as usize);
-        for (i, swapchain_image) in images.iter().enumerate() {
-            let img_view_create_info = VkImageViewCreateInfo {
-                sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                pNext: core::ptr::null(),
-                flags: 0x0,
-                image: *swapchain_image,
-                viewType: VK_IMAGE_VIEW_TYPE_2D,
-                format: surface_format.format,
-                components: VkComponentMapping {
-                    r: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    g: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    b: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    a: VK_COMPONENT_SWIZZLE_IDENTITY,
-                },
-                subresourceRange: VkImageSubresourceRange {
-                    aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as VkImageAspectFlags,
-                    baseMipLevel: 0,
-                    levelCount: 1,
-                    baseArrayLayer: 0,
-                    layerCount: 1,
-                },
-            };
-
+        for (_, swapchain_image) in images.iter().enumerate() {
             println!("Creating framebuffer image view.");
-            let mut image_view = core::ptr::null_mut();
-            let result = unsafe {
-                vkCreateImageView(
-                    device,
-                    &img_view_create_info,
-                    core::ptr::null_mut(),
-                    &mut image_view,
-                )
-            };
-
-            if result != VK_SUCCESS {
-                panic!(
-                    "Failed to create framebuffer image view {:?}. Error: {:?}.",
-                    i, result
-                );
-            }
+            let image_view = utils::create_image_view(
+                device,
+                *swapchain_image,
+                surface_format.format,
+                VK_IMAGE_ASPECT_COLOR_BIT as u32,
+            );
 
             image_views.push(image_view);
         }

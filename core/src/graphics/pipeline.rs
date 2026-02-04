@@ -6,6 +6,7 @@ use crate::graphics::mesh::Vertex;
 pub struct Pipeline {
     pub handle: VkPipeline,
     pub layout: VkPipelineLayout,
+    pub sampler: VkSampler,
     device: VkDevice,
 }
 
@@ -21,8 +22,8 @@ impl Pipeline {
         render_pass: VkRenderPass,
         descriptor_set_layout: VkDescriptorSetLayout,
     ) -> Self {
-        let vert_shader_code = read_shader_file("shaders/02_ubo_single_descriptor.vert.spv");
-        let frag_shader_code = read_shader_file("shaders/00_hardcoded_red.frag.spv");
+        let vert_shader_code = read_shader_file("shaders/04_tex_coords.vert.spv");
+        let frag_shader_code = read_shader_file("shaders/01_texture.frag.spv");
 
         let vert_shader_module = create_shader_module(device, &vert_shader_code);
         let frag_shader_module = create_shader_module(device, &frag_shader_code);
@@ -208,6 +209,43 @@ impl Pipeline {
             basePipelineIndex: -1,
         }];
 
+        // Sampler
+        let sampler_create_info = VkSamplerCreateInfo {
+            sType: VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            pNext: core::ptr::null(),
+            flags: 0x0,
+            magFilter: VK_FILTER_NEAREST,
+            minFilter: VK_FILTER_NEAREST,
+            mipmapMode: VK_SAMPLER_MIPMAP_MODE_NEAREST,
+            addressModeU: VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            addressModeV: VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            addressModeW: VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            mipLodBias: 0.0,
+            anisotropyEnable: VK_FALSE,
+            maxAnisotropy: 0.0,
+            compareEnable: VK_FALSE,
+            compareOp: VK_COMPARE_OP_NEVER,
+            minLod: 0.0,
+            maxLod: 0.0,
+            borderColor: VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            unnormalizedCoordinates: VK_FALSE,
+        };
+
+        println!("Creating sampler.");
+        let mut sampler = core::ptr::null_mut();
+        let result = unsafe {
+            vkCreateSampler(
+                device,
+                &sampler_create_info,
+                core::ptr::null_mut(),
+                &mut sampler,
+            )
+        };
+
+        if result != VK_SUCCESS {
+            panic!("Failed to create sampler. Error: {}", result);
+        }
+
         println!("Creating pipeline.");
         let mut graphics_pipelines = core::ptr::null_mut();
         let result = unsafe {
@@ -235,11 +273,13 @@ impl Pipeline {
             device,
             handle: graphics_pipelines,
             layout: pipeline_layout,
+            sampler,
         }
     }
 
     pub fn destroy(&mut self) {
         unsafe {
+            vkDestroySampler(self.device, self.sampler, core::ptr::null_mut());
             vkDestroyPipeline(self.device, self.handle, core::ptr::null());
             vkDestroyPipelineLayout(self.device, self.layout, core::ptr::null());
         }

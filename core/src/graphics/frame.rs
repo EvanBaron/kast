@@ -38,6 +38,8 @@ impl FrameData {
         graphics_queue_family: QueueFamily,
         descriptor_pool: &DescriptorPool,
         descriptor_set_layout: VkDescriptorSetLayout,
+        texture_image_views: &[VkImageView],
+        texture_sampler: VkSampler,
     ) -> Self {
         let command_pool_create_info = VkCommandPoolCreateInfo {
             sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -175,7 +177,35 @@ impl FrameData {
             pTexelBufferView: core::ptr::null(),
         };
 
-        let descriptor_writes = [global_write, object_write];
+        let mut image_infos = Vec::with_capacity(16);
+        for i in 0..16 {
+            let view = if i < texture_image_views.len() {
+                texture_image_views[i]
+            } else {
+                texture_image_views[0]
+            };
+
+            image_infos.push(VkDescriptorImageInfo {
+                sampler: texture_sampler,
+                imageView: view,
+                imageLayout: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            });
+        }
+
+        let texture_write = VkWriteDescriptorSet {
+            sType: VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            pNext: core::ptr::null(),
+            dstSet: descriptor_set,
+            dstBinding: 2,
+            dstArrayElement: 0,
+            descriptorCount: image_infos.len() as u32,
+            descriptorType: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            pImageInfo: image_infos.as_ptr(),
+            pBufferInfo: core::ptr::null(),
+            pTexelBufferView: core::ptr::null(),
+        };
+
+        let descriptor_writes = [global_write, object_write, texture_write];
 
         unsafe {
             vkUpdateDescriptorSets(

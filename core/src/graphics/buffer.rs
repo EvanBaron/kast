@@ -1,4 +1,5 @@
 use vk_bindings::*;
+use crate::graphics::utils;
 
 pub struct AllocatedBuffer {
     pub handle: VkBuffer,
@@ -46,18 +47,11 @@ impl AllocatedBuffer {
             vkGetBufferMemoryRequirements(device, buffer, &mut memory_requirements);
         };
 
-        let mut memory_properties = VkPhysicalDeviceMemoryProperties::default();
-        unsafe {
-            vkGetPhysicalDeviceMemoryProperties(physical_device, &mut memory_properties);
-        };
-
-        let memory_type_index = (0..memory_properties.memoryTypeCount)
-            .find(|&i| {
-                (memory_requirements.memoryTypeBits & (1 << i)) != 0
-                    && (memory_properties.memoryTypes[i as usize].propertyFlags & properties)
-                        == properties
-            })
-            .unwrap_or_else(|| panic!("Failed to find suitable memory type for buffer."));
+        let memory_type_index = utils::find_memory_type(
+            physical_device,
+            memory_requirements.memoryTypeBits,
+            properties,
+        );
 
         let memory_allocation_info = VkMemoryAllocateInfo {
             sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,

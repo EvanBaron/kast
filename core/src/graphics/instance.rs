@@ -1,3 +1,4 @@
+use crate::graphics::image::IMAGE_FORMAT;
 use crate::window;
 use std::ffi::CStr;
 use vk_bindings::*;
@@ -488,13 +489,31 @@ impl Instance {
         // Sort by score in descending order
         candidates.sort_by(|a, b| b.0.cmp(&a.0));
 
-        if let Some((_, device, graphics, present)) = candidates.first() {
+        if let Some((_, physical_device, graphics, present)) = candidates.first() {
             let mut properties = VkPhysicalDeviceProperties::default();
             unsafe {
-                vkGetPhysicalDeviceProperties(*device, &mut properties);
+                vkGetPhysicalDeviceProperties(*physical_device, &mut properties);
             }
 
-            return (*device, *graphics, *present);
+            let mut format_properties = VkFormatProperties::default();
+            unsafe {
+                vkGetPhysicalDeviceFormatProperties(
+                    *physical_device,
+                    IMAGE_FORMAT,
+                    &mut format_properties,
+                );
+            }
+
+            if format_properties.optimalTilingFeatures
+                & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT as VkFormatFeatureFlags
+                == 0
+            {
+                panic!(
+                    "Image format VK_FORMAT_R8G8B8A8_SRGB with VK_IMAGE_TILING_OPTIMAL does not support usage flags VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT."
+                );
+            }
+
+            return (*physical_device, *graphics, *present);
         }
 
         panic!("No suitable physical device found with surface support.");
@@ -563,7 +582,8 @@ impl Instance {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
             VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.as_ptr() as *const core::ffi::c_char,
         ];
-        let physical_device_features = VkPhysicalDeviceFeatures::default();
+        let mut physical_device_features = VkPhysicalDeviceFeatures::default();
+        physical_device_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
         let mut swapchain_maintenance1_features =
             VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT {

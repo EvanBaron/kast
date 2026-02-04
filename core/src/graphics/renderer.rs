@@ -1,11 +1,13 @@
 use crate::graphics::buffer::AllocatedBuffer;
 use crate::graphics::descriptors::{DescriptorPool, DescriptorSetLayout};
 use crate::graphics::frame::{FrameData, MAX_OBJECT};
+use crate::graphics::image::{Image, ImageData};
 use crate::graphics::instance::Instance;
 use crate::graphics::mesh::{Mesh, Vertex};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::swapchain::Swapchain;
 use crate::graphics::uniforms::{CameraData, ObjectData};
+use crate::graphics::utils;
 use crate::scene::Scene;
 use vk_bindings::*;
 use winit::window::Window;
@@ -29,6 +31,7 @@ pub struct Renderer {
     pub descriptor_pool: DescriptorPool,
     graphics_queue: VkQueue,
     present_queue: VkQueue,
+    pub images: Vec<Image>,
 }
 
 impl Renderer {
@@ -37,7 +40,7 @@ impl Renderer {
     /// # Arguments
     /// * `instance` - The Vulkan instance to create the renderer on.
     /// * `window` - The window to create the renderer for.
-    pub fn new(instance: &Instance, window: &Window) -> Self {
+    pub fn new(instance: &Instance, window: &Window, images_data: &[ImageData]) -> Self {
         let mut swapchain = Swapchain::new(
             instance.physical_device,
             instance.device,
@@ -63,6 +66,10 @@ impl Renderer {
                 type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 descriptorCount: MAX_FRAMES_IN_FLIGHT as u32,
             },
+            VkDescriptorPoolSize {
+                type_: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                descriptorCount: MAX_FRAMES_IN_FLIGHT as u32 * 16,
+            },
         ];
 
         let descriptor_pool =
@@ -73,6 +80,186 @@ impl Renderer {
 
         swapchain.create_framebuffers(instance.device, render_pass);
 
+        // Upload Command Pool
+        let upload_command_pool_create_info = VkCommandPoolCreateInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            pNext: core::ptr::null(),
+            flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            queueFamilyIndex: instance.graphics_queue_family.family_index,
+        };
+
+        let mut upload_command_pool = core::ptr::null_mut();
+        unsafe {
+            let result = vkCreateCommandPool(
+                instance.device,
+                &upload_command_pool_create_info,
+                core::ptr::null_mut(),
+                &mut upload_command_pool,
+            );
+
+            if result != VK_SUCCESS {
+                panic!("Failed to create upload command pool. Error: {:?}.", result);
+            }
+        }
+
+        let mut images = Vec::with_capacity(images_data.len());
+        for image_data in images_data.iter() {
+            images.push(Image::new(
+                instance.device,
+                instance.physical_device,
+                image_data,
+            ));
+        }
+
+        // Upload Images
+        let total_image_size: usize = images_data.iter().map(|img| img.get_data_size()).sum();
+        let staging_buffer = AllocatedBuffer::new(
+            instance.device,
+            instance.physical_device,
+            total_image_size as u64,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT as VkBufferUsageFlags,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT as VkMemoryPropertyFlags
+                | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT as VkMemoryPropertyFlags,
+        );
+
+        unsafe {
+            let mut data = core::ptr::null_mut();
+            vkMapMemory(
+                instance.device,
+                staging_buffer.memory,
+                0,
+                total_image_size as u64,
+                0,
+                &mut data,
+            );
+
+            let mut offset = 0;
+            for image_data in images_data {
+                let data_ptr = data.add(offset);
+                core::ptr::copy_nonoverlapping(
+                    image_data.data.as_ptr(),
+                    data_ptr as *mut u8,
+                    image_data.data.len(),
+                );
+                offset += image_data.data.len();
+            }
+
+            vkUnmapMemory(instance.device, staging_buffer.memory);
+        }
+
+        // Record and submit copy commands
+        utils::immediate_submit(
+            instance.device,
+            upload_command_pool,
+            instance.graphics_queue,
+            |cmd| {
+                let mut offset = 0;
+                for (i, image) in images.iter().enumerate() {
+                    unsafe {
+                        // Transition to Transfer Dst
+                        let barrier = VkImageMemoryBarrier {
+                            sType: VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                            pNext: core::ptr::null(),
+                            srcAccessMask: 0,
+                            dstAccessMask: VK_ACCESS_TRANSFER_WRITE_BIT as VkAccessFlags,
+                            oldLayout: VK_IMAGE_LAYOUT_UNDEFINED,
+                            newLayout: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            srcQueueFamilyIndex: VK_QUEUE_FAMILY_IGNORED as u32,
+                            dstQueueFamilyIndex: VK_QUEUE_FAMILY_IGNORED as u32,
+                            image: image.handle,
+                            subresourceRange: VkImageSubresourceRange {
+                                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as VkImageAspectFlags,
+                                baseMipLevel: 0,
+                                levelCount: 1,
+                                baseArrayLayer: 0,
+                                layerCount: 1,
+                            },
+                        };
+
+                        vkCmdPipelineBarrier(
+                            cmd,
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT as VkPipelineStageFlags,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT as VkPipelineStageFlags,
+                            0,
+                            0,
+                            core::ptr::null(),
+                            0,
+                            core::ptr::null(),
+                            1,
+                            &barrier,
+                        );
+
+                        // Copy Buffer to Image
+                        let region = VkBufferImageCopy {
+                            bufferOffset: offset as VkDeviceSize,
+                            bufferRowLength: 0,
+                            bufferImageHeight: 0,
+                            imageSubresource: VkImageSubresourceLayers {
+                                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as VkImageAspectFlags,
+                                mipLevel: 0,
+                                baseArrayLayer: 0,
+                                layerCount: 1,
+                            },
+                            imageOffset: VkOffset3D { x: 0, y: 0, z: 0 },
+                            imageExtent: VkExtent3D {
+                                width: image.width,
+                                height: image.height,
+                                depth: 1,
+                            },
+                        };
+
+                        vkCmdCopyBufferToImage(
+                            cmd,
+                            staging_buffer.handle,
+                            image.handle,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            1,
+                            &region,
+                        );
+
+                        // Transition to Shader Read
+                        let barrier = VkImageMemoryBarrier {
+                            sType: VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                            pNext: core::ptr::null(),
+                            srcAccessMask: VK_ACCESS_TRANSFER_WRITE_BIT as VkAccessFlags,
+                            dstAccessMask: VK_ACCESS_SHADER_READ_BIT as VkAccessFlags,
+                            oldLayout: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            newLayout: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            srcQueueFamilyIndex: VK_QUEUE_FAMILY_IGNORED as u32,
+                            dstQueueFamilyIndex: VK_QUEUE_FAMILY_IGNORED as u32,
+                            image: image.handle,
+                            subresourceRange: VkImageSubresourceRange {
+                                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as VkImageAspectFlags,
+                                baseMipLevel: 0,
+                                levelCount: 1,
+                                baseArrayLayer: 0,
+                                layerCount: 1,
+                            },
+                        };
+
+                        vkCmdPipelineBarrier(
+                            cmd,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT as VkPipelineStageFlags,
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT as VkPipelineStageFlags,
+                            0,
+                            0,
+                            core::ptr::null(),
+                            0,
+                            core::ptr::null(),
+                            1,
+                            &barrier,
+                        );
+                    }
+
+                    offset += images_data[i].get_data_size();
+                }
+            },
+        );
+
+        staging_buffer.destroy(instance.device);
+
+        let image_views: Vec<VkImageView> = images.iter().map(|img| img.image_view).collect();
+
         let mut frames = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             frames.push(FrameData::new(
@@ -81,6 +268,8 @@ impl Renderer {
                 instance.graphics_queue_family,
                 &descriptor_pool,
                 descriptor_set_layout.handle,
+                &image_views,
+                pipeline.sampler,
             ));
         }
 
@@ -103,27 +292,6 @@ impl Renderer {
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT as VkMemoryPropertyFlags,
         );
 
-        let upload_command_pool_create_info = VkCommandPoolCreateInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-            pNext: core::ptr::null(),
-            flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            queueFamilyIndex: instance.graphics_queue_family.family_index,
-        };
-
-        let mut upload_command_pool = core::ptr::null_mut();
-        unsafe {
-            let result = vkCreateCommandPool(
-                instance.device,
-                &upload_command_pool_create_info,
-                core::ptr::null_mut(),
-                &mut upload_command_pool,
-            );
-
-            if result != VK_SUCCESS {
-                panic!("Failed to create upload command pool. Error: {:?}.", result);
-            }
-        }
-
         Self {
             swapchain,
             render_pass,
@@ -140,6 +308,7 @@ impl Renderer {
             upload_command_pool,
             descriptor_set_layout,
             descriptor_pool,
+            images,
         }
     }
 
@@ -203,39 +372,44 @@ impl Renderer {
         }
 
         // Upload from Staging to Global Buffers
-        self.immediate_submit(|cmd| {
-            let vertex_copy = VkBufferCopy {
-                srcOffset: 0,
-                dstOffset: self.vertex_buffer_offset,
-                size: vertex_buffer_size,
-            };
+        utils::immediate_submit(
+            self.device,
+            self.upload_command_pool,
+            self.graphics_queue,
+            |cmd| {
+                let vertex_copy = VkBufferCopy {
+                    srcOffset: 0,
+                    dstOffset: self.vertex_buffer_offset,
+                    size: vertex_buffer_size,
+                };
 
-            unsafe {
-                vkCmdCopyBuffer(
-                    cmd,
-                    staging_buffer.handle,
-                    self.vertex_buffer.handle,
-                    1,
-                    &vertex_copy,
-                );
-            }
+                unsafe {
+                    vkCmdCopyBuffer(
+                        cmd,
+                        staging_buffer.handle,
+                        self.vertex_buffer.handle,
+                        1,
+                        &vertex_copy,
+                    );
+                }
 
-            let index_copy = VkBufferCopy {
-                srcOffset: vertex_buffer_size,
-                dstOffset: self.index_buffer_offset,
-                size: index_buffer_size,
-            };
+                let index_copy = VkBufferCopy {
+                    srcOffset: vertex_buffer_size,
+                    dstOffset: self.index_buffer_offset,
+                    size: index_buffer_size,
+                };
 
-            unsafe {
-                vkCmdCopyBuffer(
-                    cmd,
-                    staging_buffer.handle,
-                    self.index_buffer.handle,
-                    1,
-                    &index_copy,
-                );
-            }
-        });
+                unsafe {
+                    vkCmdCopyBuffer(
+                        cmd,
+                        staging_buffer.handle,
+                        self.index_buffer.handle,
+                        1,
+                        &index_copy,
+                    );
+                }
+            },
+        );
 
         staging_buffer.destroy(self.device);
 
@@ -249,61 +423,6 @@ impl Renderer {
         self.index_buffer_offset += index_buffer_size;
 
         mesh
-    }
-
-    /// Submits a temporary command buffer, records the function's command, submits it
-    /// and waits for completion.
-    ///
-    /// # Arguments
-    /// * `function` - The function to submit.
-    fn immediate_submit<F>(&self, function: F)
-    where
-        F: FnOnce(VkCommandBuffer),
-    {
-        let command_buffer_allocate_info = VkCommandBufferAllocateInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            pNext: core::ptr::null(),
-            commandPool: self.upload_command_pool,
-            level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            commandBufferCount: 1,
-        };
-
-        let mut command_buffer = core::ptr::null_mut();
-        unsafe {
-            vkAllocateCommandBuffers(
-                self.device,
-                &command_buffer_allocate_info,
-                &mut command_buffer,
-            );
-
-            let command_buffer_begin_info = VkCommandBufferBeginInfo {
-                sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                pNext: core::ptr::null(),
-                flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-                pInheritanceInfo: core::ptr::null(),
-            };
-
-            vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-            function(command_buffer);
-            vkEndCommandBuffer(command_buffer);
-
-            let submit_info = VkSubmitInfo {
-                sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                pNext: core::ptr::null(),
-                waitSemaphoreCount: 0,
-                pWaitSemaphores: core::ptr::null(),
-                pWaitDstStageMask: core::ptr::null(),
-                commandBufferCount: 1,
-                pCommandBuffers: &command_buffer,
-                signalSemaphoreCount: 0,
-                pSignalSemaphores: core::ptr::null(),
-            };
-
-            vkQueueSubmit(self.graphics_queue, 1, &submit_info, core::ptr::null_mut());
-            vkQueueWaitIdle(self.graphics_queue);
-
-            vkFreeCommandBuffers(self.device, self.upload_command_pool, 1, &command_buffer);
-        };
     }
 
     /// Creates a renderpass with a single color attachment.

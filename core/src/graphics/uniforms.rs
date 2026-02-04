@@ -10,4 +10,5 @@ pub struct CameraData {
 pub struct ObjectData {
     pub position: [f32; 4],
     pub scale: f32,
+    pub texture_id: u32,
 }

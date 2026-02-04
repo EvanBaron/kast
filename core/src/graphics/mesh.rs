@@ -4,6 +4,7 @@ use vk_bindings::*;
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub position: [f32; 3],
+    pub texture_coords: [f32; 2],
 }
 
 impl Vertex {
@@ -15,13 +16,21 @@ impl Vertex {
         }
     }
 
-    pub fn get_attribute_descriptions() -> [VkVertexInputAttributeDescription; 1] {
-        [VkVertexInputAttributeDescription {
-            binding: 0,
-            location: 0,
-            format: VK_FORMAT_R32G32B32_SFLOAT,
-            offset: 0,
-        }]
+    pub fn get_attribute_descriptions() -> [VkVertexInputAttributeDescription; 2] {
+        [
+            VkVertexInputAttributeDescription {
+                location: 0,
+                binding: 0,
+                format: VK_FORMAT_R32G32B32_SFLOAT,
+                offset: 0,
+            },
+            VkVertexInputAttributeDescription {
+                location: 1,
+                binding: 0,
+                format: VK_FORMAT_R32G32_SFLOAT,
+                offset: std::mem::size_of::<[f32; 3]>() as u32,
+            },
+        ]
     }
 }
 

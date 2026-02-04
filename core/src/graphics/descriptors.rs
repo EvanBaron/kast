@@ -21,6 +21,13 @@ impl DescriptorSetLayout {
                 stageFlags: VK_SHADER_STAGE_VERTEX_BIT as VkShaderStageFlags,
                 pImmutableSamplers: core::ptr::null(),
             },
+            VkDescriptorSetLayoutBinding {
+                binding: 2,
+                descriptorType: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                descriptorCount: 16,
+                stageFlags: VK_SHADER_STAGE_FRAGMENT_BIT as VkShaderStageFlags,
+                pImmutableSamplers: core::ptr::null(),
+            },
         ];
 
         let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfo {

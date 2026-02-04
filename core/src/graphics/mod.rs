@@ -1,9 +1,11 @@
 pub mod buffer;
 pub mod descriptors;
 pub mod frame;
+pub mod image;
 pub mod instance;
 pub mod mesh;
 pub mod pipeline;
 pub mod renderer;
 pub mod swapchain;
 pub mod uniforms;
+pub mod utils;
