@@ -25,6 +25,7 @@ pkgs.mkShell rec {
     vulkan-loader
     vulkan-validation-layers
     pkg-config
+    glslang
   ];
 
   LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}";

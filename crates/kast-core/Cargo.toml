@@ -1,0 +1,10 @@
+[package]
+name = "kast-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kast-windowing = { path = "../kast-windowing" }
+kast-event = { path = "../kast-event" }
+kast-renderer = { path = "../kast-renderer" }
+kast-graphics = { path = "../kast-graphics" }

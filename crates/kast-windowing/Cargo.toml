@@ -1,0 +1,10 @@
+[package]
+name = "kast-windowing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kast-math = { path = "../kast-math" }
+kast-event = { path = "../kast-event" }
+raw-window-handle = "0.6.2"
+winit = "0.30.12"

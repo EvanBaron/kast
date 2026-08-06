@@ -1,0 +1,8 @@
+[package]
+name = "kast-renderer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kast-graphics = { path = "../kast-graphics" }
+kast-math = { path = "../kast-math" }

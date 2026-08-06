@@ -1,0 +1,9 @@
+[package]
+name = "kast-graphics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kast-resources = { path = "../kast-resources" }
+vk_bindings = { path = "../../vk_bindings" }
+raw-window-handle = "0.6.2"

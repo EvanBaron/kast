@@ -1,7 +1,22 @@
+[package]
+name = "kast"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kast-core = { path = "crates/kast-core" }
+kast-world = { path = "crates/kast-world" }
+kast-resources = { path = "crates/kast-resources" }
+kast-renderer = { path = "crates/kast-renderer" }
+kast-graphics = { path = "crates/kast-graphics" }
+kast-windowing = { path = "crates/kast-windowing" }
+kast-event = { path = "crates/kast-event" }
+kast-math = { path = "crates/kast-math" }
+
 [workspace]
 resolver = "3"
 
 members = [
-    "vk_bindings",
-    "core"
+    "crates/*",
+    "experiences/*"
 ]
